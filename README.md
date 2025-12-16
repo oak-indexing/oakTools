@@ -1,6 +1,6 @@
 # Apache Jackrabbit Oak Tools
 
-[Tools for Apache Jackrabbit Oak](https://thomasmueller.github.io/oakTools/)
+[Tools for Apache Jackrabbit Oak](https://oak-indexing.github.io/oakTools/)
 
 ## Notes
 
