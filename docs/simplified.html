@@ -29,45 +29,97 @@
                 For more information about indexing, see: 
                 <a href="https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/indexing" target="_blank">Content Search and Indexing</a>.
             </p>
-            <h2>Run Modes</h2>
-            <h3>Immediate Mode</h3>
-            <p>This is used for local quickstart.</p>
-            <h3>Pipeline Mode</h3>
-            <p>This is used for cloud service.</p>
 
-            <h2>Modes</h2>
-            <p>
-                There are two modes of operation.
-                Depending on the mode, the configuration and usage of simplified index management is slightly different.
-                <ul>
-                    <li><u>Immediate Mode</u>: when running AEM locally, 
-                        or when using RDE (Rapid Development Environments) for AEM Cloud Service, without pipeline).
-                        In this mode, the changes are applied immediately, and the pipeline is not used.
-                    </li>
-                    <li><u>Pipeline Mode</u>: when using a Cloud Service Dev, State, and Prod environment with a pipeline.
-                        In this mode, the changes are applied by running the pipeline.
-                    </li>
-                </ul>
+            <h2>Run Modes</h2>
+            <p>There are two modes of operation.
+                While the diff.json file is the same in both modes,
+                the configuration and usage of simplified index management is slightly different.
             </p>
-            <h2>Immediate Mode</h2>
-            <p>
-                The immediate mode is used for local AEM (aka Quickstart) and 
-                RDE (Rapid Development Environments) for AEM Cloud Service, without using a pipeline.
-                In immediate mode, the changes to the diff index are applied immediately.
-            </p>
-            <h3>Immediate Mode Configuration</h3>
-            <p>
-                In immediate mode, changes in CRX/DE to the diff.index / diff.json file immediately create a new version of the respective index.
-                No pipeline is used.
-                In CRX/DE, create a new node under the path /oak:index named "diff.index"
-                and of type "oak:QueryIndexDefinition". Then set the property "type" to "disabled".
-                Then create a new node under the path "diff.index" named "diff.json".
-            </p>
-            <h2>Pipeline Mode</h2>
-            <p>
-                The pipeline mode is used for AEM Cloud Service Dev, State, and Prod environment with a pipeline.
-                In pipeline mode, the changes to the diff index are applied by running the pipeline.
-            </p>
+            <table class="mode-selector">
+                <tr>
+                    <td class="mode-tab active" id="immediateTab" onclick="switchMode('immediate')">
+                        Immediate Mode
+                    </td>
+                    <td class="mode-tab" id="pipelineTab" onclick="switchMode('pipeline')">
+                        Pipeline Mode
+                    </td>
+                </tr>
+            </table>
+            <div id="immediateContent" class="mode-content">
+                <h3>Immediate Mode</h3>
+                <p>This is used when running AEM locally, 
+                    or when using RDE (Rapid Development Environments) for AEM Cloud Service, without pipeline.
+                    In this mode, the changes are applied immediately, and the pipeline is not used.
+                </p>
+                <p>
+                    Changes in CRX/DE to the diff.index / diff.json file 
+                    immediately create a new version of the respective index, 
+                    and immediately reindexing starts in the environment.
+                </p>
+                <div class="notice-box">
+                    <div class="notice-inner">
+                        <div class="notice-title">
+                            <span class="notice-icon">ⓘ</span> Notice
+                        </div>
+                        <div class="notice-content">
+                            If the respository is large, reindexing can take some time. 
+                            Do not use this mode for large repositories.
+                        </div>
+                    </div>
+                </div>
+                <h3>Configuration</h3>
+                <p><ul>
+                    <li>Open CRX/DE.
+                    <li>Navigate to the path /oak:index.
+                    <li>Create a new node named "diff.index" of type "oak:QueryIndexDefinition".
+                    <li>Then set the property "type" to "disabled".
+                    <li>Create a new node named "diff.json" of type "nt:file".
+                    <li>Copy the content of the diff index into this file.
+                    <li>Save the changes.
+                    <li>Wait a few seconds, and refresh.
+                    <li>You should see a new version of the respective index that was created.
+                    </li>  
+                </p>
+            </div>
+            <div id="pipelineContent" class="mode-content" style="display: none;">
+                <h3>Pipeline Mode</h3>
+                <p>This is used for cloud service, for Dev, State, and Prod environments with a pipeline.</p>
+
+                <h3>Configuration</h3>
+                <p>
+                    In the Git repository of your program, 
+                    in the directory <code>ui.apps/src/main/content/jcr_root/_oak_index</code>,
+                    create a new directory named <code>diff.index</code>.
+                    Inside it, create a new file called <code>.content.xml</code>,
+                    with the following content. You will not need to change this file later.
+                    It is needed currently for compatibility with the existing tooling.
+    <pre>
+    &lt;?xml version="1.0" encoding="UTF-8"?>&lt;jcr:root
+        xmlns:jcr="http://www.jcp.org/jcr/1.0"
+        xmlns:nt="http://www.jcp.org/jcr/nt/1.0"
+        jcr:primaryType="nt:unstructured"
+        type="lucene" includedPaths="/same" queryPaths="/same">
+    &lt;diff.json jcr:primaryType="nt:file"/>&lt;/jcr:root>
+    </pre>
+                    Then create a new file called <code>diff.json</code> in the same directory.
+                    Copy the content of the diff index into this file.
+                    Also, in the file <code>/ui.apps/src/main/content/META-INF/vault/filter.xml</code>,
+                    add the following line:
+    <pre>
+        &lt;filter root="/oak:index/diff.index" />
+    </pre>
+                </p>
+                <h3>Deploy the Diff Index</h3>
+                <p>
+                    Run the pipeline to deploy the diff index.
+                    This will merge the diff index with the latest out-of-the-box index,
+                    and if needed, a new version is automatically created.
+                </p> 
+            </div>
+            <p></p>
+
+        
+            
             <h2>Tools</h2>
             <p>
                 <ul>
@@ -96,36 +148,6 @@
                 Verify it contains the changes you want to apply.
                 If you manually changed the diff index, 
                 you can verify it by opening the <a href="diffIndexVerifier.html">Diff Index Verifier</a>.
-            </p>
-            <h3>Store the Diff Index</h3>
-            <p>
-                In the Git repository of your program, 
-                in the directory <code>ui.apps/src/main/content/jcr_root/_oak_index</code>,
-                create a new directory named <code>diff.index</code>.
-                Inside it, create a new file called <code>.content.xml</code>,
-                with the following content. You will not need to change this file later.
-                It is needed currently for compatibility with the existing tooling.
-<pre>
-&lt;?xml version="1.0" encoding="UTF-8"?>&lt;jcr:root
-    xmlns:jcr="http://www.jcp.org/jcr/1.0"
-    xmlns:nt="http://www.jcp.org/jcr/nt/1.0"
-    jcr:primaryType="nt:unstructured"
-    type="lucene" includedPaths="/same" queryPaths="/same">
-&lt;diff.json jcr:primaryType="nt:file"/>&lt;/jcr:root>
-</pre>
-                Then create a new file called <code>diff.json</code> in the same directory.
-                Copy the content of the diff index into this file.
-                Also, in the file <code>/ui.apps/src/main/content/META-INF/vault/filter.xml</code>,
-                add the following line:
-<pre>
-    &lt;filter root="/oak:index/diff.index" />
-</pre>
-            </p>
-            <h3>Deploy the Diff Index</h3>
-            <p>
-                Run the pipeline to deploy the diff index.
-                This will merge the diff index with the latest out-of-the-box index,
-                and if needed, a new version is automatically created.
             </p>
             <h3>Example diff.json File</h3>
             <p>
@@ -168,6 +190,27 @@
 </pre>
         </div>
     </div>
+
+    <script>
+        function switchMode(mode) {
+            // Hide all content
+            document.getElementById('immediateContent').style.display = 'none';
+            document.getElementById('pipelineContent').style.display = 'none';
+            
+            // Remove active class from all tabs
+            document.getElementById('immediateTab').classList.remove('active');
+            document.getElementById('pipelineTab').classList.remove('active');
+            
+            // Show selected content and activate tab
+            if (mode === 'immediate') {
+                document.getElementById('immediateContent').style.display = 'block';
+                document.getElementById('immediateTab').classList.add('active');
+            } else if (mode === 'pipeline') {
+                document.getElementById('pipelineContent').style.display = 'block';
+                document.getElementById('pipelineTab').classList.add('active');
+            }
+        }
+    </script>
 
 </body>
 </html>
