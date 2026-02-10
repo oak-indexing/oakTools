@@ -4,87 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simplified Index Management</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            background-color: #f5f5f5;
-            max-width: 600px;
-        }
-        .header {
-            display: flex;
-            align-items: center;
-            max-width: 600px;
-            margin-bottom: 20px;
-            position: relative;
-            min-height: 40px;
-        }
-        .back-button {
-            background: none;
-            border: none;
-            font-size: 24px;
-            color: black;
-            cursor: pointer;
-            padding: 8px;
-            margin-right: 15px;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-decoration: none;
-            transition: background-color 0.3s;
-            position: absolute;
-            left: 0;
-        }
-        .back-button:hover {
-            background-color: #f0f0f0;
-        }
-        .note-panel {
-            background-color: #e8f4fd;
-            border: 1px solid #b3d7f7;
-            border-radius: 6px;
-            padding: 12px 16px;
-            margin: 15px auto 20px auto;
-            max-width: 600px;
-            font-size: 14px;
-            color: #0066cc;
-        }
-        .note-panel a {
-            color: #0066cc;
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .note-panel a:hover {
-            text-decoration: underline;
-        }
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        .panel {
-            background-color: white;
-            padding: 20px;
-            max-width: 600px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .panel h2 {
-            margin-top: 0;
-            color: #333;
-        }
-        .header h1 {
-            flex: 1;
-            text-align: center;
-            margin: 0;
-        }
-        @media (max-width: 700px) {
-            .panel {
-                padding: 16px;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="simplified.css">
     
 </head>
 <body>
@@ -98,18 +18,55 @@
             <h2>Overview</h2>
             <p>Note: this feature is currently in Beta mode.
             </p><p>
-                Simplified Index Management for AEM as a Cloud Service
-                is a simple way to define custom indexes and customize
+                Simplified Index Management simple way to define custom indexes and customize
                 out-of-the-box (OOTB) indexes, using one JSON file.
                 There is no need to copy definitions, or to explicitly define versions.
-                When deploying the diff by running the pipeline, 
-                the changes are automatically merged with the latest out-of-the-box index, 
-                and if needed, a new version is automatically created.
+                Customizations of index definitions are automatically merged with the latest out-of-the-box index, 
+                and if needed, a new index version is automatically created.
             </p><p>
                 Indexes created using simplified index management 
                 have a property "mergeInfo" that links here.
                 For more information about indexing, see: 
                 <a href="https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/indexing" target="_blank">Content Search and Indexing</a>.
+            </p>
+            <h2>Run Modes</h2>
+            <h3>Immediate Mode</h3>
+            <p>This is used for local quickstart.</p>
+            <h3>Pipeline Mode</h3>
+            <p>This is used for cloud service.</p>
+
+            <h2>Modes</h2>
+            <p>
+                There are two modes of operation.
+                Depending on the mode, the configuration and usage of simplified index management is slightly different.
+                <ul>
+                    <li><u>Immediate Mode</u>: when running AEM locally, 
+                        or when using RDE (Rapid Development Environments) for AEM Cloud Service, without pipeline).
+                        In this mode, the changes are applied immediately, and the pipeline is not used.
+                    </li>
+                    <li><u>Pipeline Mode</u>: when using a Cloud Service Dev, State, and Prod environment with a pipeline.
+                        In this mode, the changes are applied by running the pipeline.
+                    </li>
+                </ul>
+            </p>
+            <h2>Immediate Mode</h2>
+            <p>
+                The immediate mode is used for local AEM (aka Quickstart) and 
+                RDE (Rapid Development Environments) for AEM Cloud Service, without using a pipeline.
+                In immediate mode, the changes to the diff index are applied immediately.
+            </p>
+            <h3>Immediate Mode Configuration</h3>
+            <p>
+                In immediate mode, changes in CRX/DE to the diff.index / diff.json file immediately create a new version of the respective index.
+                No pipeline is used.
+                In CRX/DE, create a new node under the path /oak:index named "diff.index"
+                and of type "oak:QueryIndexDefinition". Then set the property "type" to "disabled".
+                Then create a new node under the path "diff.index" named "diff.json".
+            </p>
+            <h2>Pipeline Mode</h2>
+            <p>
+                The pipeline mode is used for AEM Cloud Service Dev, State, and Prod environment with a pipeline.
+                In pipeline mode, the changes to the diff index are applied by running the pipeline.
             </p>
             <h2>Tools</h2>
             <p>
