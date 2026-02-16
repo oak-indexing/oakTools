@@ -93,12 +93,16 @@
                     Inside it, create a new file called <code>.content.xml</code>,
                     with the following content. You will not need to change this file later.
                     It is needed currently for compatibility with the existing tooling.
+                    (The "type" property is set to "lucene", otherwise the pipeline run will fail.
+                    The includedPaths and queryPaths need to be set to a non-existent path, 
+                    to avoid that existing tooling will build a large index.)
+                </p>   
     <pre>
     &lt;?xml version="1.0" encoding="UTF-8"?>&lt;jcr:root
         xmlns:jcr="http://www.jcp.org/jcr/1.0"
         xmlns:nt="http://www.jcp.org/jcr/nt/1.0"
         jcr:primaryType="nt:unstructured"
-        type="lucene" includedPaths="/same" queryPaths="/same">
+        type="lucene" includedPaths="/same" queryPaths="/same" async="async">
     &lt;diff.json jcr:primaryType="nt:file"/>&lt;/jcr:root>
     </pre>
                     Then create a new file called <code>diff.json</code> in the same directory.

@@ -79,79 +79,31 @@ body {
 }
 .mode-selector {
     width: 100%;
-    border-collapse: separate;
-    border-spacing: 2px 0;
-    margin: 15px 0 0 0;
+    border-collapse: collapse;
+    margin: 15px 0;
 }
 .mode-tab {
     width: 50%;
     padding: 12px 20px;
     text-align: center;
-    background-color: #e8e8e8;
+    background-color: #f0f0f0;
     border: 1px solid #ddd;
-    border-bottom: 1px solid #ddd;
     cursor: pointer;
-    font-weight: normal;
-    color: #666;
+    font-weight: 500;
     transition: background-color 0.3s, color 0.3s;
-    border-radius: 8px 8px 0 0;
-    position: relative;
 }
 .mode-tab:hover {
-    background-color: #d8d8d8;
+    background-color: #e0e0e0;
 }
 .mode-tab.active {
-    background-color: white;
-    color: #333;
-    font-weight: bold;
-    border-bottom: 1px solid white;
-    z-index: 1;
+    background-color: #007cba;
+    color: white;
+    border-color: #007cba;
 }
 .mode-content {
-    margin-top: -1px;
+    margin-top: 15px;
     padding: 15px;
     border: 1px solid #ddd;
-    border-radius: 0 0 4px 4px;
-    background-color: white;
-}
-.notice-box {
-    border: 2px solid #0066cc;
-    background-color: white;
-    margin: 15px 0;
-    display: flex;
-}
-.notice-box::before {
-    content: '';
-    width: 30px;
-    background-color: #0066cc;
-    flex-shrink: 0;
-}
-.notice-inner {
-    flex: 1;
-}
-.notice-title {
-    background-color: white;
-    padding: 10px 15px;
-    font-weight: bold;
-    color: black;
-    display: flex;
-    align-items: center;
-}
-.notice-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background-color: #0066cc;
-    color: white;
-    font-size: 14px;
-    font-weight: bold;
-    margin-right: 8px;
-    font-style: normal;
-}
-.notice-content {
-    padding: 12px 15px;
-    color: #333;
+    border-radius: 4px;
+    background-color: #fafafa;
 }
