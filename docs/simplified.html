@@ -192,6 +192,67 @@
     }
 }
 </pre>
+
+            <h2>Versioning and Removal</h2>
+            <ul>
+                <li>Each merged index gets a name like <code>&lt;baseName&gt;-&lt;productVersion&gt;-custom-&lt;customerVersion&gt;</code>. When a new merge produces a different result, the customer version is incremented.</li>
+                <li>A <code>mergeInfo</code> and <code>mergeChecksum</code> property are added to every merged index.</li>
+                <li>Old versions of the same base index are removed after the new version is created.</li>
+                <li>If a previously merged index (one with a <code>mergeInfo</code> property) is no longer referenced in the diff, the merged index is removed.</li>
+            </ul>
+
+            <h2>Merge Rules</h2>
+            <p>
+                The following rules apply when merging a diff with an OOTB index:
+            </p>
+            <h3>Top-Level Property Merging</h3>
+            <p>The following rules apply to the properties at the top level (properties of the index):</p>
+            <ul>
+                <li><code>includedPaths</code>, <code>queryPaths</code>, and <code>tags</code> are merged (union of old and new values) rather than overwritten, if the property already exists. The properties <code>includedPaths</code> and <code>queryPaths</code> may not be added if they don't exist yet (to avoid making the index more restrictive).</li>
+                <li>In addition to the above, the following properties may also not be added to an existing (OOTB) index: <code>selectionPolicy</code>, <code>valueRegex</code>, <code>queryFilterRegex</code>, <code>excludedPaths</code>. They are dropped with a warning.</li>
+                <li>Other new properties that don't exist on the target are added.</li>
+                <li>Properties that already exist may not be overwritten.</li>
+            </ul>
+            <p>Example:</p>
+<pre>
+{
+    "acmeAssetsLucene": {
+        "tags": [ "additionalTag" ],
+        "indexRules": {
+            "acme:Asset": {
+                "properties": {
+                    "newProperty": {
+                        "name": "newProperty",
+                        "propertyIndex": true
+                    }
+                }
+            }
+        }
+    }
+}
+</pre>
+            <h3>Indexed Property Rules</h3>
+            <ul>
+                <li>When adding a new child under a <code>properties</code> node, the merger first tries to <strong>match by <code>name</code></strong> value: if an existing child has the same <code>name</code>, the diff is applied to that child (even if the child node name differs).</li>
+                <li>Similarly, it tries to <strong>match by <code>function</code></strong> value for function-based index properties.</li>
+                <li>If no match is found, a new child node is created.</li>
+                <li>The following properties may not be added to an existing child node, and may not be updated: <code>isRegexp</code>, <code>index</code>, <code>function</code>, <code>name</code>. This prevents changing how an existing property is indexed.</li>
+                <li>Existing property values may not be overwritten, except for <code>boost</code> and <code>weight</code>.</li>
+            </ul>
+            <h3>Merging Details</h3>
+            <p>In addition, the following rules are used when merging. In most cases, they are irrelevant, but listed here for completeness.</p>
+            <ul>
+                <li>Before comparing indexes, a cleaned and normalized version is produced: properties like <code>reindex</code>, <code>reindexCount</code>, <code>refresh</code>, <code>seed</code>, <code>:version</code>, <code>:nameSeed</code>, <code>:mappingVersion</code>, <code>merges</code>, <code>mergeInfo</code>, and <code>mergeChecksum</code> are stripped.</li>
+                <li>Oak-style string prefixes (<code>str:</code>, <code>nam:</code>, <code>dat:</code>) are normalized away for comparison.</li>
+                <li>The <code>jcr:primaryType</code> property is silently ignored at the top level.</li>
+                <li>Technically, rules in the "Indexed Property Rules" also apply to other child nodes, however in practice these properties are only useful in the <code>properties</code> child node.</li>
+                <li>All <code>jcr:uuid</code> properties are removed (new UUIDs are generated when needed).</li>
+                <li>Property order is ignored during comparison (properties are sorted alphabetically), but child node order is significant.</li>
+                <li>A SHA-256 checksum is computed on the merged definition to detect changes efficiently across runs.</li>
+            </ul>
+
+            <h2>Help</h2>
+            <p>If you have any issues or questions, please open a ticket in <a href="https://github.com/oak-indexing/oakTools/issues" target="_blank">https://github.com/oak-indexing/oakTools/issues</a>.</p>
         </div>
     </div>
 
