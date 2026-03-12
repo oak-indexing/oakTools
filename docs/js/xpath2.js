@@ -77,6 +77,21 @@ class XPathToSQL2Converter {
 
         statement.setOriginalQuery(query);
 
+        // Check if this is a union query (starts with '(')
+        const trimmedQuery = query.trim();
+        if (trimmedQuery.startsWith('(')) {
+            // console.log('[DEBUG] Detected union query, calling convertToUnion');
+            try {
+                const result = this.convertToUnion(query, statement, 0);
+                // console.log('[DEBUG] convertToUnion returned:', result ? result.constructor.name : 'null');
+                return result;
+            } catch (err) {
+                // console.log('[DEBUG] Exception in convertToUnion:', err.message);
+                // console.log('[DEBUG] Stack:', err.stack);
+                throw err;
+            }
+        }
+
         this.initialize(query);
 
         this.expected = [];
@@ -427,6 +442,123 @@ class XPathToSQL2Converter {
         statement.setWhere(where);
 
         return statement;
+    }
+
+    convertToUnion(query, statement, startParseIndex) {
+        // process.stderr.write('[DEBUG] convertToUnion called\n');
+        const start = query.indexOf("(", startParseIndex);
+        // process.stderr.write('[DEBUG] start: ' + start + '\n');
+        const begin = query.substring(0, start);
+        // process.stderr.write('[DEBUG] begin: ' + JSON.stringify(begin) + '\n');
+
+        // Parse the union structure character by character
+        const partList = query.substring(start);
+        // console.log('[DEBUG] partList:', partList.substring(0, 80));
+        let level = 0;
+        const parts = [];
+        let lastOrIndex = 0;
+        let i = 0;
+
+        if (partList[i] !== '(') {
+            throw new Error("Expected '(' at start of union");
+        }
+        // console.log('[DEBUG] Starting to parse union parts...');
+        i++; // Skip the opening '('
+        lastOrIndex = i;
+
+        while (i < partList.length) {
+            const ch = partList[i];
+
+            if (ch === '(') {
+                level++;
+                i++;
+            } else if (ch === ')') {
+                if (level === 0) {
+                    // This is the closing ')' of the union
+                    const orPart = partList.substring(lastOrIndex, i);
+                    parts.push(orPart);
+                    i++; // Skip the ')'
+                    break;
+                } else {
+                    level--;
+                    i++;
+                }
+            } else if (ch === '|' && level === 0) {
+                // This is a union separator at the top level
+                const orPart = partList.substring(lastOrIndex, i);
+                parts.push(orPart);
+                i++; // Skip the '|'
+                lastOrIndex = i;
+            } else if (ch === '\'' || ch === '"') {
+                // Skip over string literals to avoid counting parentheses inside them
+                const quote = ch;
+                i++;
+                while (i < partList.length && partList[i] !== quote) {
+                    if (partList[i] === '\\' && i + 1 < partList.length) {
+                        i += 2; // Skip escaped character
+                    } else {
+                        i++;
+                    }
+                }
+                if (i < partList.length) {
+                    i++; // Skip closing quote
+                }
+            } else {
+                i++;
+            }
+        }
+
+        const end = partList.substring(i);
+
+        // console.log('[DEBUG] convertToUnion: found', parts.length, 'parts');
+        for (let idx = 0; idx < parts.length; idx++) {
+            // console.log('[DEBUG]   part', idx, ':', parts[idx].substring(0, 50));
+        }
+
+        let result = null;
+        let orderList = null;
+        let queryOptions = null;
+
+        for (const p of parts) {
+            const q = begin + p + end;
+            // console.log('[DEBUG] Converting part:', q.substring(0, 80));
+            const converter = new XPathToSQL2Converter();
+            const stat = converter.convertToStatement(q);
+            // console.log('[DEBUG]   Converted to:', stat.constructor.name);
+
+            // Extract order by and options from the last statement
+            orderList = stat.orderList;
+            queryOptions = stat.queryOptions;
+
+            // Reset fields that are used in the union,
+            // but no longer in the individual statements
+            stat.orderList = [];
+            stat.queryOptions = null;
+
+            if (result === null) {
+                // console.log('[DEBUG]   Setting as first result');
+                result = stat;
+            } else {
+                // console.log('[DEBUG]   Creating UnionStatement with left:', result.constructor.name);
+                const union = new UnionStatement(result, stat);
+                // console.log('[DEBUG]   Created:', union.constructor.name);
+                result = union;
+            }
+        }
+
+        // console.log('[DEBUG] Final result type:', result.constructor.name);
+
+        // Apply shared order by and options to the final union
+        result.orderList = orderList || [];
+        result.queryOptions = queryOptions;
+        result.setExplain(statement.explain);
+        result.setMeasure(statement.measure);
+
+        // Mark as union in the AST
+        result.isUnion = true;
+        result.xpathUnionParts = parts.map(p => begin + p + end);
+
+        return result;
     }
 
     // Helper methods for parsing
@@ -932,11 +1064,6 @@ class XPathToSQL2Converter {
         }
     }
 
-    convertToUnion(query, statement, startParseIndex) {
-        // Union conversion logic - simplified
-        return statement;
-    }
-
     addExpected(token) {
         if (this.expected) {
             this.expected.push(token);
@@ -1204,6 +1331,83 @@ class Statement {
     }
 }
 
+class UnionStatement extends Statement {
+    constructor(left, right) {
+        super();
+        this.left = left;
+        this.right = right;
+        this.isUnion = true;
+    }
+
+    toString() {
+        let buff = '';
+
+        // explain | measure ...
+        if (this.explain) {
+            buff += "explain ";
+        }
+        if (this.measure) {
+            buff += "measure ";
+        }
+
+        // Left statement (without explain/measure as they're at the top level)
+        const leftQuery = this.left.toString()
+            .replace(/^explain\s+/, '')
+            .replace(/^measure\s+/, '');
+        buff += leftQuery;
+
+        // Union keyword
+        buff += " union ";
+
+        // Right statement (without explain/measure)
+        const rightQuery = this.right.toString()
+            .replace(/^explain\s+/, '')
+            .replace(/^measure\s+/, '');
+        buff += rightQuery;
+
+        // order by ... (shared across the union)
+        if (this.orderList && this.orderList.length > 0) {
+            buff += " order by ";
+            for (let i = 0; i < this.orderList.length; i++) {
+                if (i > 0) {
+                    buff += ", ";
+                }
+                buff += this.orderList[i];
+            }
+        }
+
+        // Add options clause if present (shared across the union)
+        if (this.queryOptions) {
+            const optionParts = [];
+
+            if (this.queryOptions.traversal) {
+                optionParts.push('traversal ' + this.queryOptions.traversal);
+            }
+            if (this.queryOptions.indexName) {
+                optionParts.push('index name [' + this.queryOptions.indexName + ']');
+            }
+            if (this.queryOptions.indexTag) {
+                optionParts.push('index tag [' + this.queryOptions.indexTag + ']');
+            }
+            if (this.queryOptions.offset !== null && this.queryOptions.offset !== undefined) {
+                optionParts.push('offset ' + this.queryOptions.offset);
+            }
+            if (this.queryOptions.limit !== null && this.queryOptions.limit !== undefined) {
+                optionParts.push('limit ' + this.queryOptions.limit);
+            }
+            if (this.queryOptions.prefetchCount !== null && this.queryOptions.prefetchCount !== undefined) {
+                optionParts.push('prefetch ' + this.queryOptions.prefetchCount);
+            }
+
+            if (optionParts.length > 0) {
+                buff += ' option (' + optionParts.join(', ') + ')';
+            }
+        }
+
+        return buff;
+    }
+}
+
 class Selector {
     constructor(source = null) {
         this.name = '';
@@ -1407,6 +1611,10 @@ class ExpressionContains extends Expression {
         if (l instanceof ExpressionProperty) {
             if (l.thereWasNoAt) {
                 l = new ExpressionProperty(l.selector, l.propertyName + "/*", true);
+            }
+            // Convert "." to "*" in jcr:contains - SQL-2 uses * for full-text search on all properties
+            if (l.propertyName === '.') {
+                return buff + "*, " + this.right.toString() + ")";
             }
         }
         buff += l.toString();

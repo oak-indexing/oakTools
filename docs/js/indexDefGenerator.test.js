@@ -1032,6 +1032,89 @@ runner.test('Should generate expected index definition for fulltext and path pre
     this.assertEqual(actualIndexDef, expectedIndexDef, 'Index definition should match expected structure with fulltext and path prefix');
 });
 
+runner.test('Should generate index definitions for both subqueries in a UNION query', function() {
+    // Arrange
+    const testSQL = `select a.[jcr:path], a.[jcr:score], a.* from [cq:Page] as a where (isdescendantnode(a, '/content') and contains(*, 'test')) union select a.[jcr:path], a.[jcr:score], a.* from [dam:Asset] as a where (isdescendantnode(a, '/content') and (a.[jcr:content/data/cq:model] = '/conf/test' and contains(*, 'test'))) order by a.[jcr:created] desc`;
+
+    const expectedIndexDef = {
+        "/oak:index/cqPageLucene-12-custom-1": {
+            "jcr:primaryType": "oak:QueryIndexDefinition",
+            "type": "lucene",
+            "async": ["async", "nrt"],
+            "compatVersion": 2,
+            "evaluatePathRestrictions": true,
+            "includedPaths": ["/content"],
+            "queryPaths": ["/content"],
+            "indexRules": {
+                "jcr:primaryType": "nt:unstructured",
+                "cq:Page": {
+                    "jcr:primaryType": "nt:unstructured",
+                    "properties": {
+                        "jcr:primaryType": "nt:unstructured",
+                        "allStrings": {
+                            "isRegex": true,
+                            "name": ".*",
+                            "nodeScopeIndex": true
+                        },
+                        "created": {
+                            "jcr:primaryType": "nt:unstructured",
+                            "propertyIndex": true,
+                            "name": "str:jcr:created",
+                            "ordered": true
+                        }
+                    },
+                    "includePropertyTypes": ["String"]
+                }
+            }
+        },
+        "/oak:index/damAssetLucene-12-custom-1": {
+            "jcr:primaryType": "oak:QueryIndexDefinition",
+            "type": "lucene",
+            "async": ["async", "nrt"],
+            "compatVersion": 2,
+            "evaluatePathRestrictions": true,
+            "includedPaths": ["/content"],
+            "queryPaths": ["/content"],
+            "indexRules": {
+                "jcr:primaryType": "nt:unstructured",
+                "dam:Asset": {
+                    "jcr:primaryType": "nt:unstructured",
+                    "properties": {
+                        "jcr:primaryType": "nt:unstructured",
+                        "allStrings": {
+                            "isRegex": true,
+                            "name": ".*",
+                            "nodeScopeIndex": true
+                        },
+                        "model": {
+                            "jcr:primaryType": "nt:unstructured",
+                            "propertyIndex": true,
+                            "name": "str:jcr:content/data/cq:model"
+                        },
+                        "created": {
+                            "jcr:primaryType": "nt:unstructured",
+                            "propertyIndex": true,
+                            "name": "str:jcr:created",
+                            "ordered": true
+                        }
+                    },
+                    "includePropertyTypes": ["String"]
+                }
+            }
+        }
+    };
+
+    // Act
+    const lexer = new SQL2Lexer(testSQL);
+    const parser = new SQL2Parser(lexer.tokens);
+    const ast = parser.parseQuery();
+    const filter = convertASTToFilter(ast);
+    const actualIndexDef = convertFilterToLuceneIndex(filter);
+
+    // Assert
+    this.assertEqual(actualIndexDef, expectedIndexDef, 'Should generate separate index definitions for each union subquery');
+});
+
 // Run the tests
 if (require.main === module) {
     runner.run().catch(console.error);

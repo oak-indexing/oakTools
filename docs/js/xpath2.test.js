@@ -324,9 +324,19 @@ runner.test('Oak test - jcr:like function', () => {
 runner.test('Oak test - jcr:contains function', () => {
     const input = '//element(*, my:type)[jcr:contains(., \'JSR 170\')]';
     const result = convertXPathToSQL2(input);
-    
+
     runner.assertContains(result, 'from [my:type]', 'Should query my:type');
     runner.assertContains(result, 'JSR 170', 'Should include search term');
+});
+
+runner.test('Oak test - jcr:contains with dot should convert to contains with asterisk', () => {
+    const input = '/jcr:root/content//element(*, cq:Page)[jcr:contains(., \'test\')]';
+    const result = convertXPathToSQL2(input);
+
+    runner.assertContains(result, 'from [cq:Page]', 'Should query cq:Page');
+    runner.assertContains(result, 'isdescendantnode(a, \'/content\')', 'Should have path restriction');
+    runner.assertContains(result, 'contains(*, \'test\')', 'Should convert jcr:contains(., ...) to contains(*, ...)');
+    runner.assert(!result.includes('a.[.]'), 'Should not contain a.[.]');
 });
 
 runner.test('Oak test - property non-existence check', () => {
@@ -366,11 +376,28 @@ runner.test('Oak test - order by single property', () => {
 runner.test('Oak test - order by multiple properties with direction', () => {
     const input = '//element(*, my:type) order by @my:title descending, @my:text ascending';
     const result = convertXPathToSQL2(input);
-    
+
     runner.assertContains(result, 'from [my:type]', 'Should query my:type');
     runner.assertContains(result, 'order by', 'Should include order by');
     runner.assertContains(result, 'title', 'Should include title property');
     runner.assertContains(result, 'text', 'Should include text property');
+});
+
+// Union query test
+runner.test('Union query - cq:Page and dam:Asset with jcr:contains and order by', () => {
+    const input = `(/jcr:root/content//element(*, cq:Page)[(jcr:contains(., 'test'))]
+|/jcr:root/content//element(*, dam:Asset)[(jcr:content/data/@cq:model = '/conf/test') and (jcr:contains(., 'test'))])
+order by @jcr:created descending`;
+    const result = convertXPathToSQL2(input);
+
+    runner.assertContains(result, 'select', 'Should have select clause');
+    runner.assertContains(result, 'union', 'Should handle union operator');
+    runner.assertContains(result, 'cq:Page', 'Should include cq:Page node type');
+    runner.assertContains(result, 'dam:Asset', 'Should include dam:Asset node type');
+    runner.assertContains(result, 'contains', 'Should include contains function');
+    runner.assertContains(result, 'order by', 'Should include order by clause');
+    runner.assertContains(result, 'jcr:created', 'Should order by jcr:created');
+    runner.assertContains(result, 'desc', 'Should include descending order');
 });
 
 // Run all tests

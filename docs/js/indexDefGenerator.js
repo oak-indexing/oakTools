@@ -6,6 +6,76 @@
  */
 
 /**
+ * Extract subqueries from an XPath union query
+ * @param {string} query - XPath union query starting with '('
+ * @returns {Array<string>} - Array of XPath subquery strings
+ */
+function extractXPathUnionParts(query) {
+    const start = query.indexOf("(");
+    if (start === -1) return [query];
+
+    const begin = query.substring(0, start);
+    const partList = query.substring(start);
+    let level = 0;
+    const parts = [];
+    let lastOrIndex = 0;
+    let i = 0;
+
+    if (partList[i] !== '(') {
+        return [query];
+    }
+    i++; // Skip the opening '('
+    lastOrIndex = i;
+
+    while (i < partList.length) {
+        const ch = partList[i];
+
+        if (ch === '(') {
+            level++;
+            i++;
+        } else if (ch === ')') {
+            if (level === 0) {
+                // This is the closing ')' of the union
+                const orPart = partList.substring(lastOrIndex, i);
+                parts.push(orPart);
+                i++; // Skip the ')'
+                break;
+            } else {
+                level--;
+                i++;
+            }
+        } else if (ch === '|' && level === 0) {
+            // This is a union separator at the top level
+            const orPart = partList.substring(lastOrIndex, i);
+            parts.push(orPart);
+            i++; // Skip the '|'
+            lastOrIndex = i;
+        } else if (ch === '\'' || ch === '"') {
+            // Skip over string literals
+            const quote = ch;
+            i++;
+            while (i < partList.length && partList[i] !== quote) {
+                if (partList[i] === '\\' && i + 1 < partList.length) {
+                    i += 2;
+                } else {
+                    i++;
+                }
+            }
+            if (i < partList.length) {
+                i++;
+            }
+        } else {
+            i++;
+        }
+    }
+
+    const end = partList.substring(i);
+
+    // Reconstruct full queries from parts
+    return parts.map(p => begin + p + end);
+}
+
+/**
  * Main function to parse SQL-2 or XPath queries and generate index definitions
  */
 function parseSQL2() {
@@ -35,23 +105,61 @@ function parseSQL2() {
         // Check if the query is XPath (starts with /jcr:root/ after ignoring spaces and opening parentheses)
         const trimmedQuery = sql.replace(/^[\s(]+/, ''); // Remove leading spaces and opening parentheses
         const isXPath = trimmedQuery.startsWith('/jcr:root/');
-        
+        const isXPathUnion = sql.trim().startsWith('(') && isXPath;
+        let xpathUnionParts = null;
+
         if (isXPath) {
             try {
+                // If this is an XPath union, extract the parts before conversion
+                if (isXPathUnion) {
+                    xpathUnionParts = extractXPathUnionParts(sql);
+                }
+
                 // Convert XPath to SQL-2 first
                 sql = convertXPathToSQL2(sql);
             } catch (xpathError) {
                 throw new Error('XPath conversion failed: ' + xpathError.message);
             }
         }
-        
+
         // Tokenize
         const lexer = new SQL2Lexer(sql);
-        
+
         // Parse
         const parser = new SQL2Parser(lexer.tokens);
-        const ast = parser.parseQuery();
-        
+        const originalAst = parser.parseQuery();
+
+        // Create a new AST with sql2 at the top (when converting from XPath)
+        let ast;
+        if (isXPath) {
+            ast = { sql2: sql };
+            // Copy all properties from original AST
+            for (const key in originalAst) {
+                if (originalAst.hasOwnProperty(key)) {
+                    ast[key] = originalAst[key];
+                }
+            }
+        } else {
+            ast = originalAst;
+        }
+
+        // Add XPath union information to AST if applicable
+        if (isXPathUnion && xpathUnionParts) {
+            // Insert XPathUnion after sql2 but before other properties
+            const tempAst = { sql2: ast.sql2 };
+            tempAst.XPathUnion = {
+                description: "XPath union query with " + xpathUnionParts.length + " subqueries",
+                subqueries: xpathUnionParts
+            };
+            // Copy remaining properties
+            for (const key in ast) {
+                if (ast.hasOwnProperty(key) && key !== 'sql2') {
+                    tempAst[key] = ast[key];
+                }
+            }
+            ast = tempAst;
+        }
+
         // Format and display AST
         astOutput.textContent = formatAST(ast);
         

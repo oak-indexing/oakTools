@@ -74,7 +74,7 @@ class SQL2Lexer {
         // Oak SQL-2 Keywords (only core SQL keywords, not function names)
         const keywords = {
             'SELECT': 'SELECT',
-            'FROM': 'FROM', 
+            'FROM': 'FROM',
             'WHERE': 'WHERE',
             'ORDER': 'ORDER',
             'BY': 'BY',
@@ -95,7 +95,8 @@ class SQL2Lexer {
             'ISCHILDNODE': 'ISCHILDNODE',
             'OPTION': 'OPTION',
             'TAG': 'TAG',
-            'INDEX': 'INDEX'
+            'INDEX': 'INDEX',
+            'UNION': 'UNION'
         };
         
         return {
@@ -215,7 +216,23 @@ class SQL2Parser {
 
     // Main parsing method
     parseQuery() {
-        return this.parseSelectStatement();
+        const left = this.parseSelectStatement();
+
+        // Check for UNION
+        if (this.match('UNION')) {
+            this.advance(); // consume UNION
+            const right = this.parseQuery(); // Recursively parse the right side (supports multiple unions)
+
+            return {
+                type: 'UnionStatement',
+                left: left,
+                right: right,
+                orderBy: right.orderBy || left.orderBy || [],
+                options: right.options || left.options || null
+            };
+        }
+
+        return left;
     }
 
     parseSelectStatement() {
@@ -734,6 +751,45 @@ class SQL2Parser {
 
 // Convert AST to Oak Filter representation
 function convertASTToFilter(ast) {
+    // Handle UNION queries by returning an array of filters
+    if (ast.type === 'UnionStatement') {
+        const filters = [];
+
+        // Recursively process left side
+        const leftFilters = convertASTToFilter(ast.left);
+        if (Array.isArray(leftFilters)) {
+            filters.push(...leftFilters);
+        } else {
+            filters.push(leftFilters);
+        }
+
+        // Recursively process right side
+        const rightFilters = convertASTToFilter(ast.right);
+        if (Array.isArray(rightFilters)) {
+            filters.push(...rightFilters);
+        } else {
+            filters.push(rightFilters);
+        }
+
+        // Apply shared order by and options to all filters
+        if (ast.orderBy && ast.orderBy.length > 0) {
+            filters.forEach(filter => {
+                filter.sortOrder = ast.orderBy.map(orderItem => ({
+                    property: extractSortPropertyName(orderItem.expression),
+                    direction: orderItem.direction || 'ASC'
+                }));
+            });
+        }
+
+        if (ast.options && ast.options.indexTag) {
+            filters.forEach(filter => {
+                filter.indexTag = ast.options.indexTag;
+            });
+        }
+
+        return filters;
+    }
+
     const filter = {
         type: 'Filter',
         selector: 'default',
@@ -1220,9 +1276,19 @@ function extractPathConstraint(pathPattern, filter) {
 
 // Convert Filter to Lucene Index Definition
 function convertFilterToLuceneIndex(filter) {
+    // Handle array of filters (from UNION queries)
+    if (Array.isArray(filter)) {
+        const combinedIndexDef = {};
+        filter.forEach(f => {
+            const singleIndexDef = convertFilterToLuceneIndex(f);
+            Object.assign(combinedIndexDef, singleIndexDef);
+        });
+        return combinedIndexDef;
+    }
+
     const nodeType = filter.nodeType || 'nt:base';
     const indexName = generateIndexName(filter);
-    
+
     const indexDef = {
         [`/oak:index/${indexName}`]: {
             "jcr:primaryType": "oak:QueryIndexDefinition",
@@ -1604,25 +1670,34 @@ function formatAST(node, indent = 0) {
 }
 
 function formatFilter(filter) {
+    // Handle array of filters (from UNION queries)
+    if (Array.isArray(filter)) {
+        const formattedFilters = filter.map((f, index) => {
+            const formatted = formatFilter(f); // Recursively format each filter
+            return `Filter ${index + 1} (${f.nodeType || 'unknown'}):\n${formatted}`;
+        });
+        return formattedFilters.join('\n\n' + '='.repeat(60) + '\n\n');
+    }
+
     // Convert the filter to a clean JSON representation
     const cleanFilter = {
         type: filter.type,
         selector: filter.selector,
         nodeType: filter.nodeType
     };
-    
+
     // Add path restrictions if present
-    if (filter.pathRestrictions.length > 0) {
+    if (filter.pathRestrictions && filter.pathRestrictions.length > 0) {
         cleanFilter.pathRestrictions = filter.pathRestrictions;
     }
     
     // Add property restrictions if present
-    if (filter.propertyRestrictions.length > 0) {
+    if (filter.propertyRestrictions && filter.propertyRestrictions.length > 0) {
         cleanFilter.propertyRestrictions = filter.propertyRestrictions;
     }
-    
+
     // Add sort order if present
-    if (filter.sortOrder.length > 0) {
+    if (filter.sortOrder && filter.sortOrder.length > 0) {
         cleanFilter.sortOrder = filter.sortOrder;
     }
     
