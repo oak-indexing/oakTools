@@ -17,8 +17,6 @@
         <div class="panel">
             <h2>Overview</h2>
             <p>Note: this feature is currently in Beta mode.
-                It requires AEM as a Cloud Service 2025.03 (release 24893) or later,
-                with Apache Jackrabbit Oak version 1.92 or later.
             </p><p>
                 If you have any issues or questions, please <a href="https://github.com/oak-indexing/oakTools/issues" target="_blank">open a ticket</a>.
             </p><p>
@@ -56,6 +54,10 @@
                     In this mode, the changes are applied immediately, and the pipeline is not used.
                 </p>
                 <p>
+                    Requirements: AEM as a Cloud Service 2025.03 (release 24893) or later,
+                	with Apache Jackrabbit Oak version 1.92 or later.
+                </p>
+                <p>
                     Changes in CRX/DE to the diff.index / diff.json file 
                     immediately create a new version of the respective index, 
                     and immediately reindexing starts in the environment.
@@ -88,7 +90,10 @@
             </div>
             <div id="pipelineContent" class="mode-content" style="display: none;">
                 <h3>Pipeline Mode</h3>
-                <p>This is used for cloud service, for Dev, State, and Prod environments with a pipeline.</p>
+                <p>This is used for cloud service, for Dev, State, and Prod environments with a pipeline.
+                </p>
+                <p>The feature is enabled for all AEM releases (this is because the "diff.index" is processed outside of AEM).
+                </p>
 
                 <h3>Configuration</h3>
                 <p>
