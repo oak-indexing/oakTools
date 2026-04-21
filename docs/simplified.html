@@ -171,15 +171,16 @@
                 For fully custom indexes, the name needs to contain a dot.
                 The index name does not contains the "/oak:index/" prefix.
                 Also, fully custom indexes need to have an "includedPaths" property that is not empty,
-                and set to a path that doesn't include "/apps" or "/libs". It is best to set the "queryPaths"
-                to the same value as the "includedPaths".
+                and set to a path that doesn't include "/apps" or "/libs". 
+                It is best to set the "queryPaths" to the same value as the "includedPaths".
+                
 <pre>
 {
     "damAssetLucene": {
         "indexRules": {
             "dam:Asset": {
                 "properties": {
-                    "test1": {
+                    "test": {
                         "name": "test",
                         "propertyIndex": true
                     }
@@ -187,22 +188,33 @@
             }
         }
     },
-    "custom.slingFolderNodeNames": {
+    "custom.slingFolderTest": {
         "async": [ "async" ],
         "compatVersion": 2,
         "evaluatePathRestrictions": true,
         "includedPaths": [ "/content/dam" ],
         "queryPaths": [ "/content/dam" ],
+        "tags": "custom.folderNames",
+        "selectionPolicy": "tag",
         "type": "lucene",
         "indexRules": {
             "sling:Folder": {
-                "indexNodeName": true
+                "properties": {
+                    "test": {
+                        "name": "test",
+                        "propertyIndex": true
+                    }                
+                }
             }
         }
     }
 }
 </pre>
-
+			<p>
+			Notice that the Tika configuration of out-of-the-box indexes is not needed in the diff.
+			For fully custom indexes, a Tika configuration is only required 
+			if the index definition contains analyzed properties or an aggregation definition.
+			</p>
             <h2>Versioning and Removal</h2>
             <ul>
                 <li>Each merged index gets a name like <code>&lt;baseName&gt;-&lt;productVersion&gt;-custom-&lt;customerVersion&gt;</code>. When a new merge produces a different result, the customer version is incremented.</li>
@@ -241,6 +253,7 @@
     }
 }
 </pre>
+
             <h3>Indexed Property Rules</h3>
             <ul>
                 <li>When adding a new child under a <code>properties</code> node, the merger first tries to <strong>match by <code>name</code></strong> value: if an existing child has the same <code>name</code>, the diff is applied to that child (even if the child node name differs).</li>
