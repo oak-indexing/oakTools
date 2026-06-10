@@ -214,6 +214,21 @@
 			For fully custom indexes, a Tika configuration is only required 
 			if the index definition contains analyzed properties or an aggregation definition.
 			</p>
+			
+            <h2 id="which-index">Which Index to Customize or Create</h2>
+            <ul>
+            <li>For queries on "dam:Asset", "damAssetLucene" needs to be customized.
+            <li>For queries on "cq:Page", "cqPageContent" needs to be customized.
+            <li>For other queries, consult the index configuration under "/oak:index" node. 
+                Only indexes with an "includedPaths" property can be customized,
+                and in this case only if "/apps" and "/libs" is not included.
+                That means, as an example, that "cqPageLucene" can not be 
+                customized with simplified index management. 
+            <li>If you do not find an out-of-the-box index that matches,
+                create a new index with a dot in the name, as in the example
+                "custom.slingFolderTest" above.
+            </ul>
+			
             <h2 id="versioning-and-removal">Versioning and Removal</h2>
             <ul>
                 <li>Each merged index gets a name like <code>&lt;baseName&gt;-&lt;productVersion&gt;-custom-&lt;customerVersion&gt;</code>. When a new merge produces a different result, the customer version is incremented.</li>
@@ -221,7 +236,7 @@
                 <li>Old versions of the same base index are removed after the new version is created.</li>
                 <li>If a previously merged index (one with a <code>mergeInfo</code> property) is no longer referenced in the diff, the merged index is removed.</li>
             </ul>
-
+            
             <h2 id="merge-rules">Merge Rules</h2>
             <p>
                 The following rules apply when merging a diff with an OOTB index:
