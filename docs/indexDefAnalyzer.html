@@ -115,14 +115,8 @@
             <div class="text-panel">
                 <h2>Index Definitions (JSON)</h2>
                 <textarea id="inputJSON" placeholder="Paste index definitions JSON here..."></textarea>
-                <div class="note">
-                    Only direct children with keys containing "-custom-" or a dot will be processed. 
-                    Output includes each key and its includedPaths (if any). 
-                    If none exist, includedPath will be set to "/". 
-                    If multiple indexes share the same prefix (text before the first "-"), 
-                    only the latest is kept.</div>
                 <div class="note">Example:</div>
-                <textarea id="exampleJSON" readonly>{
+                <textarea id="exampleJSON" readonly style="height: 290px;">{
   "/oak:index/acPrincipalName": {
     "reindex": false
   },
@@ -136,11 +130,19 @@
     "includedPaths": ["/content/dam"]
   }
 }</textarea>
+                <div class="note">
+                    Only direct children with keys containing "-custom-" or a dot will be processed.
+                    Output includes each key and its includedPaths (if any).
+                    If none exist, includedPath will be set to "/".
+                    If multiple indexes share the same prefix (text before the first "-"),
+                    only the latest is kept.</div>
             </div>
             <div class="text-panel">
                 <h2>Diff Index</h2>
                 <textarea id="outputJSON" readonly placeholder="The diff index will appear here..."></textarea>
                 <div id="errorMessage" class="error"></div>
+                <div class="note">Comments:</div>
+                <textarea id="commentsOutput" readonly style="height: 290px; color: red;"></textarea>
             </div>
         </div>
     </div>
@@ -235,12 +237,91 @@
             return result;
         }
 
+        function isOutOfTheBoxIndex(path) {
+            const oobPrefixes = [
+                "/oak:index/aemformsAFReferenceLuceneIndex",
+                "/oak:index/appsLibsLucene",
+                "/oak:index/assetLinkShare",
+                "/oak:index/assetPrefixNodename",
+                "/oak:index/authorizables",
+                "/oak:index/cmLucene",
+                "/oak:index/commerceLucene",
+                "/oak:index/contentFragments",
+                "/oak:index/contentResourceType",
+                "/oak:index/cqContentFragment",
+                "/oak:index/cqContentReference",
+                "/oak:index/cqLiveSyncCancelledLucene",
+                "/oak:index/cqMasterLucene",
+                "/oak:index/cqPageContent",
+                "/oak:index/cqPageLucene",
+                "/oak:index/cqProjectLucene",
+                "/oak:index/cqReportsLucene",
+                "/oak:index/cqSiteSearch",
+                "/oak:index/cqTagLucene",
+                "/oak:index/cqTags",
+                "/oak:index/cqVarCacheableDepsLucene",
+                "/oak:index/damAssetLucene",
+                "/oak:index/damAssetStateIndex",
+                "/oak:index/damCollectionLucene",
+                "/oak:index/designFiles",
+                "/oak:index/experienceFragmentsIndex",
+                "/oak:index/formsManagerCcmForm",
+                "/oak:index/formsTemplateLucene",
+                "/oak:index/fragments",
+                "/oak:index/graphqlConfig",
+                "/oak:index/guidesAssetProperties",
+                "/oak:index/guidesKonnect",
+                "/oak:index/guidesMapCollectionV2",
+                "/oak:index/guidesPeerLinks",
+                "/oak:index/guidesProperties",
+                "/oak:index/internalVerificationLucene",
+                "/oak:index/models",
+                "/oak:index/nodetypeLucene",
+                "/oak:index/ntBaseLucene",
+                "/oak:index/ntFileFolderLucene",
+                "/oak:index/ntFolderDamLucene",
+                "/oak:index/ntHierarchyLucene",
+                "/oak:index/packageLucene",
+                "/oak:index/pathReference",
+                "/oak:index/repAccessControllableDamLucene",
+                "/oak:index/repTokenIndex",
+                "/oak:index/screensContentJcrPrimaryType",
+                "/oak:index/screensSmartSyncJcrPrimaryType",
+                "/oak:index/siteEditorIndex",
+                "/oak:index/slingeventJob",
+                "/oak:index/slingQuickSites",
+                "/oak:index/slingResourceResolver",
+                "/oak:index/slingSitemaps",
+                "/oak:index/socialLucene",
+                "/oak:index/versionStoreIndex",
+                "/oak:index/workflowDataLucene",
+                "/oak:index/workflowMetaDataIndex",
+                
+                // not really out-of-the-box, but relatively common
+				"/oak:index/algoliaFragmentsIndex",
+				"/oak:index/algoliaHitTemplate",
+				"/oak:index/commerceDam",
+				"/oak:index/commerceExperienceFragments",
+				"/oak:index/contentFragmentLucene",
+				"/oak:index/cqAuditLucene",
+				"/oak:index/cqLiveSyncCancelled",
+				"/oak:index/enablementResourceName",
+				"/oak:index/experienceFragments",
+				"/oak:index/lucene",
+				"/oak:index/glpropertyIndex",
+				"/oak:index/workfrontDocumentId"
+            ];
+            return oobPrefixes.some(prefix => path.startsWith(prefix));
+        }
+
         function analyze() {
             const inputEl = document.getElementById('inputJSON');
             const outputEl = document.getElementById('outputJSON');
+            const commentsEl = document.getElementById('commentsOutput');
             const errorEl = document.getElementById('errorMessage');
             errorEl.style.display = 'none';
             errorEl.textContent = '';
+            commentsEl.value = '';
 
             let dataText = inputEl.value.trim();
             if (!dataText) {
@@ -278,13 +359,45 @@
                 }
                 obj[k] = value;
             }
+            
+            const commentLines = [];
+            
+            var ootbIndexCount = 0;
 
             // Only process direct children keys that include '-custom-' and contain a dot
             const keys = Object.keys(obj).filter(k => {
                 const isDirectChild = k.startsWith('/oak:index/');
+                if (!isDirectChild) {
+                    return false;
+                }
+                
                 const hasCustom = k.includes('-custom-');
                 const hasDot = k.includes('.');
-                return isDirectChild && (hasCustom || hasDot);
+                if (hasCustom || hasDot) {
+                    return true;
+                }
+
+                const isOOTB = isOutOfTheBoxIndex(k);
+                let value = obj[k];
+                if (value.type === "property" 
+                    || value.type === "nodetype"
+                    || value.type === "reference"
+                    || value.type === "counter") {
+                    return false;
+                }
+                if (!isOOTB) {
+                    ootbIndexCount++;
+                    if (ootbIndexCount == 1) {
+                        if (commentLines.length > 0) {
+                            commentLines.push("");
+                        }
+   	                    commentLines.push("Detected a custom index that does not contain a dot.");
+   	                    commentLines.push("Please migrate it to use the format <prefix>.<name>-1-custom-1:");
+                        commentLines.push("");
+                    }
+	                commentLines.push("* " + k);
+	            }
+                
             });
             // Build result entries (normalize includedPaths to an array)
             const entries = keys.map(k => {
@@ -301,8 +414,8 @@
                 const value = { includedPaths: paths };
                 return [k, value];
             });
-
-            let indexesThatContainsAppsOrLibs = [];
+            
+            var legacyIndexCount = 0;
 
             // Filter out entries that have root or libs/apps paths
             const filtered = entries.filter(([k, v]) => {
@@ -314,8 +427,21 @@
                 const hasLibsPrefix = paths.some(p => typeof p === 'string' && p.startsWith('/libs/'));
                 const containsAppsOrLibs = hasRoot || hasApp || hasLibs || hasAppsPrefix || hasLibsPrefix;
                 if (containsAppsOrLibs) {
-                    indexesThatContainsAppsOrLibs.push(k);
-                    console.log(k, v);
+                    legacyIndexCount++;
+                    if (legacyIndexCount == 1) {
+                        if (commentLines.length > 0) {
+                            commentLines.push("");
+                        }
+                        commentLines.push("Detected a legacy index.");
+                        commentLines.push("Such indexes that cannot be configured using");
+                        commentLines.push("Simplified Index Management and ");
+                        commentLines.push("need to use the legacy configuration mode.");
+                        commentLines.push("If this custom index, consider adding");
+                        commentLines.push("includedPaths and queryPaths to e.g. \"/content\",");
+                        commentLines.push("so that Simplified Index Management can be used:");
+                        commentLines.push("");
+                    }
+	                commentLines.push("* " + k);
                 }
                 return !containsAppsOrLibs;
             });
@@ -406,7 +532,8 @@
             }
 
             // Fully custom indexes (without base version)
-            const fullyCustomIndexes = filtered.filter(e => !e.baseVersion);
+            // Each entry e is a [key, value] pair; e[1] is the value object where baseVersion is set
+            const fullyCustomIndexes = filtered.filter(e => !e[1].baseVersion);
             if (fullyCustomIndexes.length > 0) {
                 for (const [k, v] of fullyCustomIndexes) {
                     let k2 = k;
@@ -433,10 +560,8 @@
                 }
             }
 
-            if (indexesThatContainsAppsOrLibs.length > 0) {
-                result.indexesThatContainsAppsOrLibs = indexesThatContainsAppsOrLibs; 
-            }
             outputEl.value = JSON.stringify(result, null, 2);
+            commentsEl.value = commentLines.join('\n');
         }
 
         // Auto-fill the example into input on first load for convenience
