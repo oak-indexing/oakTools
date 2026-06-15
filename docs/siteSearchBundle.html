@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AEM Expanded Page Index Bundle</title>
+    <link rel="stylesheet" href="simplified.css">
+    <style>
+        table.props {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            font-size: 14px;
+        }
+        table.props th, table.props td {
+            border: 1px solid #ddd;
+            padding: 10px 14px;
+            text-align: left;
+            vertical-align: top;
+        }
+        table.props th {
+            background-color: #f0f0f0;
+            font-weight: 600;
+        }
+        table.props tr:nth-child(even) td {
+            background-color: #fafafa;
+        }
+        pre {
+            background-color: #f4f4f4;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 14px 16px;
+            overflow-x: auto;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+        code {
+            background-color: #f0f0f0;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-size: 13px;
+        }
+        a.inline { color: #007cba; text-decoration: none; }
+        a.inline:hover { text-decoration: underline; }
+        .note {
+            background-color: #fff8e1;
+            border: 1px solid #ffe082;
+            border-radius: 6px;
+            padding: 12px 16px;
+            margin: 15px 0;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="index.html" class="back-button">&lt;</a>
+        <h1>AEM Expanded Page Index Bundle</h1>
+    </div>
+
+    <div class="container">
+        <div class="panel">
+
+            <p>
+                A standalone AEM bundle that extracts content from <code>cq:Page</code> nodes — including referenced Content Fragments —
+                and applies the <code>cq:Searchable</code> mixin with search properties, enabling fulltext and semantic search via
+                the <code>cqSiteSearch</code> Oak Elasticsearch index.
+            </p>
+            <p>
+                Search properties are written directly to the original <code>/content</code> nodes.
+                A lightweight mirror at <code>/var/indexing/expanded-pages</code> is maintained for operational tracking
+                (dirty flags, Content Fragment backreferences).
+            </p>
+
+            <h2 id="quickstart">Quickstart</h2>
+
+            <h3>1. Add the Maven repository to <code>all/pom.xml</code></h3>
+<pre>&lt;repositories&gt;
+    &lt;repository&gt;
+        &lt;id&gt;oak-indexing&lt;/id&gt;
+        &lt;url&gt;https://oak-indexing.github.io/maven-repository/&lt;/url&gt;
+        &lt;snapshots&gt;&lt;enabled&gt;true&lt;/enabled&gt;&lt;/snapshots&gt;
+        &lt;releases&gt;&lt;enabled&gt;true&lt;/enabled&gt;&lt;/releases&gt;
+    &lt;/repository&gt;
+&lt;/repositories&gt;</pre>
+
+            <h3>2. Embed the bundle in <code>all/pom.xml</code></h3>
+            <p>In the <code>&lt;embeddeds&gt;</code> block of <code>filevault-package-maven-plugin</code>:</p>
+<pre>&lt;embedded&gt;
+    &lt;groupId&gt;com.adobe.aem.indexing&lt;/groupId&gt;
+    &lt;artifactId&gt;expanded-page-index&lt;/artifactId&gt;
+    &lt;version&gt;1.5.6&lt;/version&gt;
+    &lt;target&gt;/apps/your-packages/application/install&lt;/target&gt;
+&lt;/embedded&gt;</pre>
+
+            <h3>3. Add OSGi configs to your <code>ui.config</code> module</h3>
+            <p>
+                The bundle embeds its own repoinit and service user mapping via <code>Sling-Initial-Content</code>, but in AEM Cloud Service
+                there is a known ordering risk where the bundle can activate before the JCR Installer feeds those configs to ConfigAdmin.
+                To guarantee reliable startup, add these two files to your project's <code>ui.config</code> module:
+            </p>
+            <p><strong><code>ui.config/.../osgiconfig/config/org.apache.sling.jcr.repoinit.RepositoryInitializer~expanded-page-index.cfg.json</code></strong></p>
+<pre>{
+  "scripts": [
+    "create path (sling:Folder) /var/indexing/expanded-pages/content\n\ncreate service user expanded-page-index-service with forced path system/cq:services/expanded-page-index\n\nset principal ACL for expanded-page-index-service\n  allow jcr:read,jcr:modifyProperties,jcr:nodeTypeManagement on /content\n  allow jcr:all on /var\n  allow jcr:read on /oak:index\nend"
+  ]
+}</pre>
+            <p><strong><code>ui.config/.../osgiconfig/config/org.apache.sling.serviceusermapping.impl.ServiceUserMapperImpl.amended~expanded-page-index.cfg.json</code></strong></p>
+<pre>{
+  "user.mapping": [
+    "com.adobe.aem.indexing.expand:expanded-page-index=[expanded-page-index-service]"
+  ]
+}</pre>
+
+            <h3>4. Deploy the Oak indexes</h3>
+            <p>The bundle requires two Oak indexes before it activates. These are deployed by Adobe into your AEM Cloud Service environment:</p>
+            <ul>
+                <li><code>cqPageMirror-1-custom-1</code> — tracks <code>cq:PageMirror</code> nodes (dirty flags, move detection)</li>
+                <li><code>cqFragmentMirror-1-custom-1</code> — tracks <code>cq:FragmentMirror</code> nodes (CF backreferences)</li>
+            </ul>
+            <div class="note">
+                The bundle is a strict NOP until these two indexes are present — it is safe to deploy the bundle ahead of time and wait for index deployment.
+                The <code>cqSiteSearch-1-custom-1</code> Elasticsearch index is required for search queries to work, but is not a condition for the bundle to activate.
+            </div>
+
+            <h2 id="search-properties">Search Properties</h2>
+            <p>The bundle writes the following properties to each <code>cq:Page</code> node under <code>/content</code>:</p>
+            <table class="props">
+                <tr><th>Property</th><th>Description</th></tr>
+                <tr><td><code>cq:searchTitle</code></td><td>Page title</td></tr>
+                <tr><td><code>cq:searchDescription</code></td><td>Page description</td></tr>
+                <tr><td><code>cq:searchContent</code></td><td>Extracted page body (multi-value, HTML stripped)</td></tr>
+            </table>
+
+            <h3>Search query</h3>
+<pre>SELECT [cq:searchTitle], [cq:searchDescription], [jcr:path]
+FROM [cq:Searchable]
+WHERE ISDESCENDANTNODE('/content/mysite/us/en')
+AND contains(*, 'search terms')
+OPTION (INDEX TAG cqSiteSearch)</pre>
+
+            <h2 id="configuration">Configuration</h2>
+
+            <p>The scheduler runs every 30 seconds by default. To change the interval, configure OSGi PID <code>com.adobe.aem.indexing.expand.scheduler.ExpandedPageIndexScheduler</code>:</p>
+            <table class="props">
+                <tr><th>Property</th><th>Default</th><th>Description</th></tr>
+                <tr><td><code>scheduler.expression</code></td><td><code>0/30 * * * * ?</code></td><td>Cron expression</td></tr>
+                <tr><td><code>scheduler.concurrent</code></td><td><code>false</code></td><td>Prevent overlapping runs</td></tr>
+            </table>
+
+            <p>The bundle itself is configured via OSGi PID <code>com.adobe.aem.indexing.expand.config.ExpandedPageIndexConfig</code>:</p>
+            <table class="props">
+                <tr><th>Property</th><th>Default</th><th>Description</th></tr>
+                <tr>
+                    <td><code>referencePropertyPattern</code></td>
+                    <td><code>fragmentPath</code></td>
+                    <td>Regex (full match) applied to property names on <code>cq:Page</code> subnodes to identify Content Fragment references. Adjust when your components use a non-standard property name (e.g. <code>cfArticleReference</code>, <code>cf.*Reference</code>).</td>
+                </tr>
+                <tr>
+                    <td><code>contentPropertiesPropertyName</code></td>
+                    <td><code>elementNames</code></td>
+                    <td>Name of the sibling property that lists which fragment fields to extract (source-driven / WKND style). Set to empty to disable this strategy.</td>
+                </tr>
+                <tr>
+                    <td><code>contentPropertyPattern</code></td>
+                    <td><em>(empty)</em></td>
+                    <td>Regex (full match) applied to property names inside the fragment's <code>jcr:content/data/master</code> node. All matching properties are extracted as body text (pattern-driven / Telekom style). Leave empty to disable.</td>
+                </tr>
+            </table>
+
+            <h3>Content Fragment extraction strategies</h3>
+            <p>Two strategies control how text is pulled out of referenced Content Fragments. They run <strong>independently</strong> and can be used simultaneously.</p>
+            <ul>
+                <li>
+                    <strong>Source-driven (WKND style)</strong> — the component node carries a property (default <code>elementNames</code>) that explicitly lists which fragment fields to include.
+                    Use this when your components already declare which fields they render.
+                </li>
+                <li>
+                    <strong>Pattern-driven (Telekom style)</strong> — a regex (<code>contentPropertyPattern</code>) is matched against all property names inside the fragment's <code>data/master</code> node;
+                    every matching property is extracted. Use this when components do not declare field names, or to extract fields from many different CF models uniformly.
+                </li>
+            </ul>
+            <p>Example config using both strategies together:</p>
+<pre>{
+  "referencePropertyPattern": "cf.*Reference",
+  "contentPropertiesPropertyName": "elementNames",
+  "contentPropertyPattern": "body|text|description"
+}</pre>
+
+            <h2 id="mirror-structure">Mirror Structure</h2>
+            <p>
+                The mirror at <code>/var/indexing/expanded-pages</code> holds operational state only — dirty flags and CF backreferences.
+                It is not used for search.
+            </p>
+<pre>/var/indexing/expanded-pages/
+├── state/
+│   └── lastRun              (timestamp of last successful extraction run)
+└── content/                 (mirrors /content)
+    └── mysite/
+        └── us/
+            └── en/
+                └── page/    (cq:PageMirror)
+                    ├── path                 = "/content/mysite/us/en/page"
+                    ├── dirty                = false
+                    └── fragmentReferences   = ["/content/dam/fragments/..."]</pre>
+
+            <h2 id="management">Management</h2>
+            <p>
+                The bundle exposes a JMX MBean for operational tasks.<br>
+                Navigate to: <code>http://localhost:4502/system/console/jmx</code> → <code>com.adobe.aem.indexing.expand</code> → <code>ExpandedPageIndexService</code>
+            </p>
+            <table class="props">
+                <tr><th>Operation</th><th>Description</th></tr>
+                <tr><td><code>runExtraction()</code></td><td>Process pages changed since the last run</td></tr>
+                <tr><td><code>rebuildMirror()</code></td><td>Delete the mirror and rebuild from scratch</td></tr>
+                <tr><td><code>clearMirror()</code></td><td>Delete the mirror without rebuilding</td></tr>
+            </table>
+
+            <h2 id="troubleshooting">Troubleshooting</h2>
+
+            <h3>Bundle does not start — <code>extractionService</code> unsatisfied</h3>
+            <p>
+                The <code>ExpandedPageIndexScheduler</code> depends on <code>ExpandedPageIndexService</code>.
+                If the service component is unsatisfied, check it directly in the OSGi console and look for any unsatisfied references there.
+            </p>
+
+            <h3>Bundle starts but logs "Cannot derive user name"</h3>
+            <p>
+                The service user mapping was not processed before the bundle activated.
+                Add the <code>ServiceUserMapperImpl.amended</code> config to your <code>ui.config</code> module as described in
+                <a class="inline" href="#quickstart">Quickstart step 3</a>.
+            </p>
+
+            <h3>Bundle starts but mirror is empty</h3>
+            <p>
+                <strong>Cause:</strong> Oak indexes not yet deployed.<br>
+                <strong>Check:</strong> Browse to <code>/oak:index/cqPageMirror-1-custom-1</code> in CRXDE. If missing, the indexes have not been deployed yet.
+                The bundle logs <code>"Oak indexes not yet available"</code> each scheduler cycle until they exist.
+            </p>
+
+            <h3>Bundle starts, indexes exist, but extraction never runs</h3>
+            <p>
+                Look for <code>"Content extraction service activated"</code> in <code>error.log</code>. If absent, the service user
+                <code>expanded-page-index-service</code> may not have been created by the bundle's repoinit script.
+                Check for repoinit errors at startup.
+            </p>
+
+            <h3>Elasticsearch index is empty</h3>
+            <ol>
+                <li>Confirm the <code>cq:Searchable</code> mixin is present on target nodes (CRXDE — check a <code>/content</code> page node)</li>
+                <li>Confirm the <code>elastic-async</code> lane is running — check <code>IndexStats</code> for <code>elastic-async</code> in the JMX console</li>
+                <li>Confirm <code>cqSiteSearch-1-custom-1</code> exists at <code>/oak:index/cqSiteSearch-1-custom-1</code> and has <code>type=elasticsearch</code></li>
+            </ol>
+
+            <h3>Searches return no results</h3>
+            <ol>
+                <li>Confirm the Elasticsearch index contains documents (check via the Oak Query Diagnostics or ES API)</li>
+                <li>Confirm <code>OPTION (INDEX TAG cqSiteSearch)</code> is present in your query</li>
+            </ol>
+
+            <h3>Pages not updating after content changes</h3>
+            <ul>
+                <li>Check <code>lastRun</code> timestamp at <code>/var/indexing/expanded-pages/state</code> — it should update every 30 seconds</li>
+                <li>Check <code>error.log</code> for <code>"Previous extraction still running"</code> — a run is taking longer than the scheduler interval</li>
+            </ul>
+
+            <h2 id="mirror-mode">Mirror Mode (advanced)</h2>
+            <p>
+                By default, <code>cq:Searchable</code> properties are written to the original <code>/content</code> nodes (ORIGINAL mode).
+                An alternative MIRROR mode writes them to <code>/var/indexing/expanded-pages</code> instead, keeping <code>/content</code> untouched.
+                To enable it, add an OSGi config to your <code>ui.config</code>:
+            </p>
+            <p><strong><code>ui.config/.../osgiconfig/config/com.adobe.aem.indexing.expand.config.ExpandedPageIndexConfig.cfg.json</code></strong></p>
+<pre>{
+  "searchMode": "MIRROR"
+}</pre>
+            <p>In MIRROR mode, adjust your search query to target <code>/var/indexing/expanded-pages</code> instead of <code>/content</code>.</p>
+
+            <h2 id="help">Help</h2>
+            <p>If you have any issues or questions, please <a href="https://github.com/oak-indexing/oakTools/issues" target="_blank">open a ticket</a>.</p>
+
+        </div>
+    </div>
+</body>
+</html>
