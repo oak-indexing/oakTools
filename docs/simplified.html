@@ -210,9 +210,14 @@
 }
 </pre>
 			<p>
-			Notice that the Tika configuration of out-of-the-box indexes is not needed in the diff.
+			Notes:
+			<ul>
+			<li>Omit all version numbers. As an example, use <code>damAssetLucene</code> instead of <code>damAssetLucene-13</code>.
+			    This applies to both customizations as well as fully custom indexes.
+			<li>The Tika configuration of out-of-the-box indexes is not needed in the diff.
 			For fully custom indexes, a Tika configuration is only required 
 			if the index definition contains analyzed properties or an aggregation definition.
+			</ul>
 			</p>
 			
             <h2 id="which-index">Which Index to Customize or Create</h2>
