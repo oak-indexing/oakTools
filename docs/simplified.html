@@ -216,8 +216,11 @@
 			    This applies to both customizations as well as fully custom indexes.
 			<li>You cannot customize <code>cqPageLucene</code>. Customize and use <code>cqPageContent</code> instead.
 			<li>The Tika configuration of out-of-the-box indexes is not needed in the diff.
-			For fully custom indexes, a Tika configuration is only required 
-			if the index definition contains analyzed properties or an aggregation definition.
+                For fully custom indexes, a Tika configuration is only required 
+			    if the index definition contains analyzed properties or an aggregation definition.
+			<li>Due to a limitation in the merging logic, currently indexes without a version number
+			    such as <code>commerceLucene</code> can not yet be customized using simplified index management.
+			    This will soon be supported.
 			</ul>
 			</p>
 			
