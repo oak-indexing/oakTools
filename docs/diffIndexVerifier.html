@@ -92,7 +92,7 @@
                 <div class="note">Enter a JSON object mapping index names to fragments.</div>
                 <div class="note">Example:</div>
                 <textarea id="exampleJSON" readonly>{
-  "/oak:index/damAssetLucene": {
+  "damAssetLucene": {
     "indexRules": {
       "dam:Asset": {
         "properties": {
@@ -117,6 +117,73 @@
         const outputEl = document.getElementById('output');
         const exampleEl = document.getElementById('exampleJSON');
 
+        const INCLUDED_PATH_NAMES = new Set([
+            'appsLibsLucene',
+            'authorizables',
+            'cmLucene',
+            'cqPageLucene',
+            'cqProjectLucene',
+            'cqTagLucene',
+            'lucene',
+            'nodetypeLucene',
+            'ntBaseLucene',
+            'pathReference',
+            'siteEditorIndex',
+            'slingResourceResolver',
+            'socialLucene',
+            'workflowDataLucene',
+        ]);
+
+        const BLOCKED_NAMES = new Set([
+            'commerceLucene',
+            'cqReportsLucene',
+            'formsTemplateLucene',
+        ]);
+
+        const KNOWN_NAMES = new Set([
+            'aemformsAFReferenceLuceneIndex',
+            'assetLinkShare',
+            'assetPrefixNodename',
+            'commerceDam',
+            'commerceExperienceFragments',
+            'contentFragmentLucene',
+            'contentFragments',
+            'contentResourceType',
+            'cqContentFragment',
+            'cqContentReference',
+            'cqLiveSyncCancelled',
+            'cqLiveSyncCancelledLucene',
+            'cqMasterLucene',
+            'cqPageContent',
+            'cqPageLucene',
+            'cqVarCacheableDepsLucene',
+            'damAssetLucene',
+            'damAssetStateIndex',
+            'damCollectionLucene',
+            'designFiles',
+            'experienceFragments',
+            'experienceFragmentsIndex',
+            'formsManagerCcmForm',
+            'fragments',
+            'graphqlConfig',
+            'guidesAssetProperties',
+            'guidesKonnect',
+            'guidesMapCollectionV2',
+            'guidesPeerLinks',
+            'models',
+            'ntFolderDamLucene',
+            'repAccessControllableDamLucene',
+            'slingQuickSites',
+            'slingSitemaps',
+            'slingeventJob',
+            'versionStoreIndex',
+            'workflowMetaDataIndex',
+        ]);
+
+        function verifyName(key) {
+            return key.includes('.') || KNOWN_NAMES.has(key);
+        }
+
         function validateAndReport() {
             let text = inputEl.value;
             if (!text.trim()) {
@@ -124,18 +191,51 @@
                 text = exampleEl.value;
                 inputEl.value = text;
             }
+            let parsed;
             try {
-                JSON.parse(text);
-                outputEl.value = 'Valid JSON';
+                parsed = JSON.parse(text);
             } catch (e) {
-                // Try to extract line/column if possible
                 const info = locateJsonError(text, e);
                 if (info) {
                     outputEl.value = `Invalid at line ${info.line}, column ${info.column}`;
                 } else {
                     outputEl.value = 'Invalid';
                 }
+                return;
             }
+
+            const lines = ['Valid JSON'];
+            const keys = Object.keys(parsed);
+
+            const includedPath = keys.filter(k => INCLUDED_PATH_NAMES.has(k));
+            if (includedPath.length > 0) {
+                for (const k of includedPath) {
+                    lines.push(`validateIncludedPath: FAIL "${k}" — Can not customize this index because it includes the path /apps or /libs. Verify there is an alternative index and customize this instead, e.g. for cqPageLucene there is cqPageContent.`);
+                }
+                outputEl.value = lines.join('\n\n');
+                return;
+            }
+            lines.push('validateIncludedPath: OK');
+
+            const blocked = keys.filter(k => BLOCKED_NAMES.has(k));
+            if (blocked.length > 0) {
+                for (const k of blocked) {
+                    lines.push(`validateCustomizableIndex: FAIL "${k}" — Can not customize these indexes currently with simplified index management, because these indexes contain a version number. This will be supported in future release.`);
+                }
+                outputEl.value = lines.join('\n\n');
+                return;
+            }
+            lines.push('validateCustomizableIndex: OK');
+
+            const bad = keys.filter(k => !verifyName(k));
+            if (bad.length === 0) {
+                lines.push('verifyName: OK');
+            } else {
+                for (const k of bad) {
+                    lines.push(`verifyName: FAIL "${k}" — name must contain a dot or be a known index name`);
+                }
+            }
+            outputEl.value = lines.join('\n\n');
         }
 
         function locateJsonError(text, err) {
