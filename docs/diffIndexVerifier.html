@@ -180,6 +180,10 @@
             'workflowMetaDataIndex',
         ]);
 
+        function toSortedArray(value) {
+            return (Array.isArray(value) ? value : [value]).slice().sort();
+        }
+
         function verifyName(key) {
             return key.includes('.') || KNOWN_NAMES.has(key);
         }
@@ -232,9 +236,57 @@
                 lines.push('verifyName: OK');
             } else {
                 for (const k of bad) {
-                    lines.push(`verifyName: FAIL "${k}" — name must contain a dot or be a known index name`);
+                    lines.push(`verifyName: FAIL "${k}" — name must contain a dot or be a known index name without version number`);
                 }
             }
+
+            let queryPathsFailed = false;
+            for (const k of keys) {
+                const idx = parsed[k];
+                if (idx && typeof idx === 'object' && 'includedPaths' in idx) {
+                    const included = toSortedArray(idx.includedPaths);
+                    const query = 'queryPaths' in idx ? toSortedArray(idx.queryPaths) : null;
+                    if (!query || JSON.stringify(included) !== JSON.stringify(query)) {
+                        queryPathsFailed = true;
+                        lines.push(`validateQueryPaths: FAIL "${k}" — the queryPaths setting is missing or does not match the includedPath setting. The result can be that the index is used for queries where it does not have all data.`);
+                    }
+                }
+            }
+            if (!queryPathsFailed) {
+                lines.push('validateQueryPaths: OK');
+            }
+
+            let tikaConfigFailed = false;
+            for (const k of keys) {
+                const idx = parsed[k];
+                const TIKA_AGGREGATE_TYPES = new Set(['dam:Asset', 'nt:unstructured', 'cq:Template']);
+                const aggregates = idx && typeof idx === 'object' ? idx.aggregates : null;
+                const hasTikaAggregate = aggregates && typeof aggregates === 'object' &&
+                    Object.keys(aggregates).some(a => TIKA_AGGREGATE_TYPES.has(a));
+                if (k.includes('.') && hasTikaAggregate && !('tika' in idx)) {
+                    tikaConfigFailed = true;
+                    lines.push(`validateTikaConfig: FAIL "${k}" — the index has an aggregate definition, but no matching Tika configuration. Preferrably, extend one of the existing out-of-the-box indexes instead of creating a custom index, or add a Tika configuration.\nUse the following Tika configuration:\n"tika": {\n            "config.xml": {\n                "jcr:primaryType": "nt:file",\n                "jcr:content": {\n                    "jcr:primaryType": "nt:resource",\n                    "jcr:data": ":blobId:PHByb3BlcnRpZXM+CiAgPGRldGVjdG9ycz4KICAgIDxkZXRlY3RvciBjbGFzcz0ib3JnLmFwYWNoZS50aWthLmRldGVjdC5UeXBlRGV0ZWN0b3IiLz4KICA8L2RldGVjdG9ycz4KICA8cGFyc2Vycz4KICAgIDxwYXJzZXIgY2xhc3M9Im9yZy5hcGFjaGUudGlrYS5wYXJzZXIuRGVmYXVsdFBhcnNlciI+CiAgICAgIDxtaW1lPnRleHQvcGxhaW48L21pbWU+CiAgICAgIDxtaW1lPnRleHQvdnR0PC9taW1lPgogICAgPC9wYXJzZXI+CiAgPC9wYXJzZXJzPgogIDxzZXJ2aWNlLWxvYWRlciBpbml0aWFsaXphYmxlUHJvYmxlbUhhbmRsZXI9Imlnbm9yZSIgZHluYW1pYz0idHJ1ZSIvPgo8L3Byb3BlcnRpZXM+",\n                    "jcr:lastModifiedBy": "admin",\n                    "jcr:mimeType": "text/xml"\n                }\n            }\n        }`);
+                }
+            }
+            if (!tikaConfigFailed) {
+                lines.push('validateTikaConfig: OK');
+            }
+
+            let facetConfigFailed = false;
+            for (const k of keys) {
+                const idx = parsed[k];
+                if (idx && typeof idx === 'object' && 'facets' in idx) {
+                    const facets = idx.facets;
+                    if (facets !== null && typeof facets === 'object' && Object.keys(facets).length === 0) {
+                        facetConfigFailed = true;
+                        lines.push(`validateFacetConfig: FAIL "${k}" — the facets configuration is empty. Use "facets": { "topChildren": "100", "secure": "insecure" } or "facets": { "topChildren": "100", "secure": "statistical" } to ensure facets are fast.`);
+                    }
+                }
+            }
+            if (!facetConfigFailed) {
+                lines.push('validateFacetConfig: OK');
+            }
+
             outputEl.value = lines.join('\n\n');
         }
 
