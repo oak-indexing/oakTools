@@ -180,6 +180,14 @@
             'workflowMetaDataIndex',
         ]);
 
+        function hasColonKey(obj) {
+            if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+            for (const key of Object.keys(obj)) {
+                if (key.startsWith(':') || hasColonKey(obj[key])) return true;
+            }
+            return false;
+        }
+
         function toSortedArray(value) {
             return (Array.isArray(value) ? value : [value]).slice().sort();
         }
@@ -285,6 +293,54 @@
             }
             if (!facetConfigFailed) {
                 lines.push('validateFacetConfig: OK');
+            }
+
+            const FULLY_CUSTOM_REQUIRED = ['evaluatePathRestrictions', 'includedPaths', 'queryPaths', 'async', 'compatVersion', 'tags', 'type', 'indexRules'];
+            const TAG_PATTERN = /^[a-zA-Z0-9_]+$/;
+            function isValidAsync(v) {
+                if (v === 'async') return true;
+                if (!Array.isArray(v)) return false;
+                const s = v.slice().sort().join(',');
+                return s === 'async' || s === 'async,nrt';
+            }
+            function isValidTags(v) {
+                if (typeof v === 'string') return TAG_PATTERN.test(v);
+                if (Array.isArray(v)) return v.length > 0 && v.every(t => typeof t === 'string' && TAG_PATTERN.test(t));
+                return false;
+            }
+            let fullyCustomFailed = false;
+            for (const k of keys) {
+                if (!k.includes('.')) continue;
+                const idx = parsed[k];
+                if (!idx || typeof idx !== 'object') continue;
+                const issues = [];
+                const missing = FULLY_CUSTOM_REQUIRED.filter(rk => !(rk in idx));
+                if (missing.length > 0) issues.push(`missing required keys: ${missing.join(', ')}`);
+                if ('async' in idx && !isValidAsync(idx.async)) issues.push(`async must be "async", ["async"], or ["async", "nrt"]`);
+                if ('compatVersion' in idx && idx.compatVersion !== 2) issues.push(`compatVersion must be 2`);
+                if ('evaluatePathRestrictions' in idx && idx.evaluatePathRestrictions !== true) issues.push(`evaluatePathRestrictions must be true`);
+                if ('tags' in idx && !isValidTags(idx.tags)) issues.push(`tags must be a string or array of strings containing only a-z, A-Z, 0-9, _`);
+                if ('selectionPolicy' in idx && idx.selectionPolicy !== 'tag') issues.push(`selectionPolicy must be "tag"`);
+                if ('type' in idx && idx.type !== 'lucene') issues.push(`type must be "lucene"`);
+                if ('indexRules' in idx && (typeof idx.indexRules !== 'object' || idx.indexRules === null || Object.keys(idx.indexRules).length === 0)) issues.push(`indexRules must be an object with at least one child`);
+                if (issues.length > 0) {
+                    fullyCustomFailed = true;
+                    lines.push(`validateFullyCustomIndex: FAIL "${k}" — ${issues.join('; ')}`);
+                }
+            }
+            if (!fullyCustomFailed) {
+                lines.push('validateFullyCustomIndex: OK');
+            }
+
+            let keyNameFailed = false;
+            for (const k of keys) {
+                if (hasColonKey(parsed[k])) {
+                    keyNameFailed = true;
+                    lines.push(`validateKeyName: FAIL "${k}" — one or more keys start with ":". Keys starting with ":" are internal JCR properties and must not be included in index definitions.`);
+                }
+            }
+            if (!keyNameFailed) {
+                lines.push('validateKeyName: OK');
             }
 
             outputEl.value = lines.join('\n\n');
