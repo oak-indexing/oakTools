@@ -1,0 +1,229 @@
+const INCLUDED_PATH_NAMES = new Set([
+    'appsLibsLucene',
+    'authorizables',
+    'cmLucene',
+    'cqPageLucene',
+    'cqProjectLucene',
+    'cqTagLucene',
+    'lucene',
+    'nodetypeLucene',
+    'ntBaseLucene',
+    'pathReference',
+    'siteEditorIndex',
+    'slingResourceResolver',
+    'socialLucene',
+    'workflowDataLucene',
+]);
+
+const BLOCKED_NAMES = new Set([
+    'commerceLucene',
+    'cqReportsLucene',
+    'formsTemplateLucene',
+]);
+
+const KNOWN_NAMES = new Set([
+    'aemformsAFReferenceLuceneIndex',
+    'assetLinkShare',
+    'assetPrefixNodename',
+    'commerceDam',
+    'commerceExperienceFragments',
+    'contentFragmentLucene',
+    'contentFragments',
+    'contentResourceType',
+    'cqContentFragment',
+    'cqContentReference',
+    'cqLiveSyncCancelled',
+    'cqLiveSyncCancelledLucene',
+    'cqMasterLucene',
+    'cqPageContent',
+    'cqPageLucene',
+    'cqVarCacheableDepsLucene',
+    'damAssetLucene',
+    'damAssetStateIndex',
+    'damCollectionLucene',
+    'designFiles',
+    'experienceFragments',
+    'experienceFragmentsIndex',
+    'formsManagerCcmForm',
+    'fragments',
+    'graphqlConfig',
+    'guidesAssetProperties',
+    'guidesKonnect',
+    'guidesMapCollectionV2',
+    'guidesPeerLinks',
+    'models',
+    'ntFolderDamLucene',
+    'repAccessControllableDamLucene',
+    'slingQuickSites',
+    'slingSitemaps',
+    'slingeventJob',
+    'versionStoreIndex',
+    'workflowMetaDataIndex',
+]);
+
+function hasEmptyObject(obj) {
+    if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) return false;
+    if (Object.keys(obj).length === 0) return true;
+    return Object.values(obj).some(v => hasEmptyObject(v));
+}
+
+function hasColonKey(obj) {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return false;
+    for (const key of Object.keys(obj)) {
+        if (key.startsWith(':') || hasColonKey(obj[key])) return true;
+    }
+    return false;
+}
+
+function toSortedArray(value) {
+    return (Array.isArray(value) ? value : [value]).slice().sort();
+}
+
+function verifyName(key) {
+    return key.includes('.') || KNOWN_NAMES.has(key);
+}
+
+/**
+ * Validates a parsed diff index object and returns an array of result lines.
+ * @param {object} parsed - The parsed diff index JSON object.
+ * @returns {string[]} Array of validation result lines.
+ */
+function validateDiffIndex(parsed) {
+    const lines = ['Valid JSON'];
+    const keys = Object.keys(parsed);
+
+    const includedPath = keys.filter(k => INCLUDED_PATH_NAMES.has(k));
+    if (includedPath.length > 0) {
+        for (const k of includedPath) {
+            lines.push(`validateIncludedPath: FAIL "${k}" — Can not customize this index because it includes the path /apps or /libs. Verify there is an alternative index and customize this instead, e.g. for cqPageLucene there is cqPageContent.`);
+        }
+        return lines;
+    }
+    lines.push('validateIncludedPath: OK');
+
+    const blocked = keys.filter(k => BLOCKED_NAMES.has(k));
+    if (blocked.length > 0) {
+        for (const k of blocked) {
+            lines.push(`validateCustomizableIndex: FAIL "${k}" — Can not customize these indexes currently with simplified index management, because these indexes contain a version number. This will be supported in future release.`);
+        }
+        return lines;
+    }
+    lines.push('validateCustomizableIndex: OK');
+
+    const bad = keys.filter(k => !verifyName(k));
+    if (bad.length === 0) {
+        lines.push('verifyName: OK');
+    } else {
+        for (const k of bad) {
+            lines.push(`verifyName: FAIL "${k}" — name must contain a dot or be a known index name without version number`);
+        }
+    }
+
+    let queryPathsFailed = false;
+    for (const k of keys) {
+        const idx = parsed[k];
+        if (idx && typeof idx === 'object' && 'includedPaths' in idx) {
+            const included = toSortedArray(idx.includedPaths);
+            const query = 'queryPaths' in idx ? toSortedArray(idx.queryPaths) : null;
+            if (!query || JSON.stringify(included) !== JSON.stringify(query)) {
+                queryPathsFailed = true;
+                lines.push(`validateQueryPaths: FAIL "${k}" — the queryPaths setting is missing or does not match the includedPath setting. The result can be that the index is used for queries where it does not have all data.`);
+            }
+        }
+    }
+    if (!queryPathsFailed) {
+        lines.push('validateQueryPaths: OK');
+    }
+
+    let tikaConfigFailed = false;
+    for (const k of keys) {
+        const idx = parsed[k];
+        const TIKA_AGGREGATE_TYPES = new Set(['dam:Asset', 'nt:unstructured', 'cq:Template']);
+        const aggregates = idx && typeof idx === 'object' ? idx.aggregates : null;
+        const hasTikaAggregate = aggregates && typeof aggregates === 'object' &&
+            Object.keys(aggregates).some(a => TIKA_AGGREGATE_TYPES.has(a));
+        if (k.includes('.') && hasTikaAggregate && !('tika' in idx)) {
+            tikaConfigFailed = true;
+            lines.push(`validateTikaConfig: FAIL "${k}" — the index has an aggregate definition, but no matching Tika configuration. Preferrably, extend one of the existing out-of-the-box indexes instead of creating a custom index, or add a Tika configuration.\nUse the following Tika configuration:\n"tika": {\n            "config.xml": {\n                "jcr:primaryType": "nt:file",\n                "jcr:content": {\n                    "jcr:primaryType": "nt:resource",\n                    "jcr:data": ":blobId:PHByb3BlcnRpZXM+CiAgPGRldGVjdG9ycz4KICAgIDxkZXRlY3RvciBjbGFzcz0ib3JnLmFwYWNoZS50aWthLmRldGVjdC5UeXBlRGV0ZWN0b3IiLz4KICA8L2RldGVjdG9ycz4KICA8cGFyc2Vycz4KICAgIDxwYXJzZXIgY2xhc3M9Im9yZy5hcGFjaGUudGlrYS5wYXJzZXIuRGVmYXVsdFBhcnNlciI+CiAgICAgIDxtaW1lPnRleHQvcGxhaW48L21pbWU+CiAgICAgIDxtaW1lPnRleHQvdnR0PC9taW1lPgogICAgPC9wYXJzZXI+CiAgPC9wYXJzZXJzPgogIDxzZXJ2aWNlLWxvYWRlciBpbml0aWFsaXphYmxlUHJvYmxlbUhhbmRsZXI9Imlnbm9yZSIgZHluYW1pYz0idHJ1ZSIvPgo8L3Byb3BlcnRpZXM+",\n                    "jcr:lastModifiedBy": "admin",\n                    "jcr:mimeType": "text/xml"\n                }\n            }\n        }`);
+        }
+    }
+    if (!tikaConfigFailed) {
+        lines.push('validateTikaConfig: OK');
+    }
+
+    let facetConfigFailed = false;
+    for (const k of keys) {
+        const idx = parsed[k];
+        if (idx && typeof idx === 'object' && 'facets' in idx) {
+            const facets = idx.facets;
+            if (facets !== null && typeof facets === 'object' && Object.keys(facets).length === 0) {
+                facetConfigFailed = true;
+                lines.push(`validateFacetConfig: FAIL "${k}" — the facets configuration is empty. Use "facets": { "topChildren": "100", "secure": "insecure" } or "facets": { "topChildren": "100", "secure": "statistical" } to ensure facets are fast.`);
+            }
+        }
+    }
+    if (!facetConfigFailed) {
+        lines.push('validateFacetConfig: OK');
+    }
+
+    const FULLY_CUSTOM_REQUIRED = ['evaluatePathRestrictions', 'includedPaths', 'queryPaths', 'async', 'compatVersion', 'tags', 'type', 'indexRules'];
+    const TAG_PATTERN = /^[a-zA-Z0-9_]+$/;
+    function isValidAsync(v) {
+        if (v === 'async') return true;
+        if (!Array.isArray(v)) return false;
+        const s = v.slice().sort().join(',');
+        return s === 'async' || s === 'async,nrt';
+    }
+    function isValidTags(v) {
+        if (typeof v === 'string') return TAG_PATTERN.test(v);
+        if (Array.isArray(v)) return v.length > 0 && v.every(t => typeof t === 'string' && TAG_PATTERN.test(t));
+        return false;
+    }
+    let fullyCustomFailed = false;
+    for (const k of keys) {
+        if (!k.includes('.')) continue;
+        const idx = parsed[k];
+        if (!idx || typeof idx !== 'object') continue;
+        const issues = [];
+        const missing = FULLY_CUSTOM_REQUIRED.filter(rk => !(rk in idx));
+        if (missing.length > 0) issues.push(`missing required keys: ${missing.join(', ')}`);
+        if ('async' in idx && !isValidAsync(idx.async)) issues.push(`async must be "async", ["async"], or ["async", "nrt"]`);
+        if ('compatVersion' in idx && idx.compatVersion !== 2) issues.push(`compatVersion must be 2`);
+        if ('evaluatePathRestrictions' in idx && idx.evaluatePathRestrictions !== true) issues.push(`evaluatePathRestrictions must be true`);
+        if ('tags' in idx && !isValidTags(idx.tags)) issues.push(`tags must be a string or array of strings containing only a-z, A-Z, 0-9, _`);
+        if ('selectionPolicy' in idx && idx.selectionPolicy !== 'tag') issues.push(`selectionPolicy must be "tag"`);
+        if ('type' in idx && idx.type !== 'lucene') issues.push(`type must be "lucene"`);
+        if ('indexRules' in idx && (typeof idx.indexRules !== 'object' || idx.indexRules === null || Object.keys(idx.indexRules).length === 0)) issues.push(`indexRules must be an object with at least one child`);
+        if (issues.length > 0) {
+            fullyCustomFailed = true;
+            lines.push(`validateFullyCustomIndex: FAIL "${k}" — ${issues.join('; ')}`);
+        }
+    }
+    if (!fullyCustomFailed) {
+        lines.push('validateFullyCustomIndex: OK');
+    }
+
+    let keyNameFailed = false;
+    for (const k of keys) {
+        if (hasColonKey(parsed[k])) {
+            keyNameFailed = true;
+            lines.push(`validateKeyName: FAIL "${k}" — one or more keys start with ":". Keys starting with ":" are internal JCR properties and must not be included in index definitions.`);
+        }
+    }
+    if (!keyNameFailed) {
+        lines.push('validateKeyName: OK');
+    }
+
+    let nonEmptyFailed = false;
+    for (const k of keys) {
+        if (hasEmptyObject(parsed[k])) {
+            nonEmptyFailed = true;
+            lines.push(`validateNonEmpty: FAIL "${k}" — Empty nodes / objects are not currently supported. Use { "jcr:primaryType": "nam:nt:unstructured" } instead of {}.`);
+        }
+    }
+    if (!nonEmptyFailed) {
+        lines.push('validateNonEmpty: OK');
+    }
+
+    return lines;
+}

@@ -147,6 +147,7 @@
         </div>
     </div>
 
+    <script src="js/diffIndexVerifier.js"></script>
     <script>
         function isPlainObject(value) {
             return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -561,6 +562,17 @@
             }
 
             outputEl.value = JSON.stringify(result, null, 2);
+
+            if (Object.keys(result).length > 0) {
+                const validationLines = validateDiffIndex(result);
+                const hasFail = validationLines.some(l => l.includes(': FAIL '));
+                if (hasFail || commentLines.length > 0) {
+                    if (commentLines.length > 0) commentLines.push('');
+                    commentLines.push('Validation:');
+                    commentLines.push(...validationLines);
+                }
+            }
+
             commentsEl.value = commentLines.join('\n');
         }
 
