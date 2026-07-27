@@ -156,9 +156,15 @@ function validateDiffIndex(parsed) {
         const idx = parsed[k];
         if (idx && typeof idx === 'object' && 'facets' in idx) {
             const facets = idx.facets;
-            if (facets !== null && typeof facets === 'object' && Object.keys(facets).length === 0) {
-                facetConfigFailed = true;
-                lines.push(`validateFacetConfig: FAIL "${k}" — the facets configuration is empty. Use "facets": { "topChildren": "100", "secure": "insecure" } or "facets": { "topChildren": "100", "secure": "statistical" } to ensure facets are fast.`);
+            if (facets !== null && typeof facets === 'object') {
+                if (Object.keys(facets).length === 0) {
+                    facetConfigFailed = true;
+                    lines.push(`validateFacetConfig: FAIL "${k}" — the facets configuration is empty. Use "facets": { "topChildren": "100", "secure": "insecure" } or "facets": { "topChildren": "100", "secure": "statistical" } to ensure facets are fast.`);
+                }
+                if (facets.secure === 'secure') {
+                    facetConfigFailed = true;
+                    lines.push(`validateFacetConfig: FAIL "${k}" — facets.secure must not be "secure"; use "insecure" or "statistical" instead to ensure facets are fast.`);
+                }
             }
         }
     }
