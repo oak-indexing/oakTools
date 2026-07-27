@@ -32,6 +32,8 @@ function cleanupAndConvertToLucene(level, v) {
             if (key.startsWith(':')
                 || key === 'seed'
                 || key === 'merges'
+                || key === 'mergeInfo'
+                || key === 'mergeChecksum'
                 || key === 'reindexCount'
                 || key === 'refresh'
                 || key === 'originalType'
@@ -94,6 +96,54 @@ function deepDiff(level, base, current, type) {
     }
     if (isEmptyObject(result)) return {};
     return result;
+}
+
+// Properties that are allowed to be tuned on a custom index without adding a new
+// key, so a *changed value* (not just an added key) must still surface in the diff.
+const ALLOWED_VALUE_CHANGE_KEYS = new Set(['boost', 'weight', 'secure']);
+
+// Recursively finds properties in ALLOWED_VALUE_CHANGE_KEYS whose value differs
+// between base and current, at any depth, and returns a sparse object containing
+// only those changed values (using the current value), mirroring their location.
+function diffAllowedValueChanges(base, current) {
+    if (!isPlainObject(base) || !isPlainObject(current)) return {};
+    const result = {};
+    for (const key of Object.keys(current)) {
+        const currVal = current[key];
+        if (!Object.prototype.hasOwnProperty.call(base, key)) {
+            continue;
+        }
+        const baseVal = base[key];
+        if (ALLOWED_VALUE_CHANGE_KEYS.has(key)) {
+            const equal = Array.isArray(baseVal) && Array.isArray(currVal)
+                ? JSON.stringify(baseVal) === JSON.stringify(currVal)
+                : baseVal === currVal;
+            if (!equal) {
+                result[key] = currVal;
+            }
+            continue;
+        }
+        if (isPlainObject(currVal) && isPlainObject(baseVal)) {
+            const sub = diffAllowedValueChanges(baseVal, currVal);
+            if (!isEmptyObject(sub)) {
+                result[key] = sub;
+            }
+        }
+    }
+    return result;
+}
+
+// Deep-merges `source` into `target` (nested plain objects are merged
+// recursively; other values are overwritten) and returns `target`.
+function deepMerge(target, source) {
+    for (const key of Object.keys(source)) {
+        if (isPlainObject(source[key]) && isPlainObject(target[key])) {
+            deepMerge(target[key], source[key]);
+        } else {
+            target[key] = source[key];
+        }
+    }
+    return target;
 }
 
 function isOutOfTheBoxIndex(path) {
@@ -328,16 +378,26 @@ function analyzeIndexDefinitions(input) {
         }
     }
 
-    // Compute diffs against base where applicable
+    // Compute diffs against base where applicable. Track which keys were matched
+    // to a base by key (rather than relying on `v.baseVersion`, which gets deleted
+    // below) so the "fully custom" check further down isn't fooled by entries whose
+    // diff against the base happened to come back empty.
+    const matchedBaseKeys = new Set();
     for (const [k, v] of selected) {
         if (v.baseVersion && Object.prototype.hasOwnProperty.call(obj, v.baseVersion)) {
+            matchedBaseKeys.add(k);
             const baseObj = obj[v.baseVersion];
             const currObj = obj[k];
             const diff = deepDiff(0, baseObj, currObj, 'added');
-            if (!isEmptyObject(diff)) {
+            // Some properties (boost, weight, secure) are allowed to be tuned in the
+            // custom index without adding a new key, so their changed values must be
+            // merged in even though deepDiff's 'added' pass only catches new keys.
+            const allowedChanges = diffAllowedValueChanges(baseObj, currObj);
+            const combinedDiff = deepMerge(diff, allowedChanges);
+            if (!isEmptyObject(combinedDiff)) {
                 // Carry over every added/changed top-level section (indexRules,
                 // aggregates, etc.), not just indexRules.
-                Object.assign(v, diff);
+                Object.assign(v, combinedDiff);
             }
             delete v.baseVersion;
         }
@@ -366,8 +426,8 @@ function analyzeIndexDefinitions(input) {
     }
 
     // Fully custom indexes (without base version)
-    // Each entry e is a [key, value] pair; e[1] is the value object where baseVersion is set
-    const fullyCustomIndexes = filtered.filter(e => !e[1].baseVersion);
+    // Each entry e is a [key, value] pair; e[0] is the original key
+    const fullyCustomIndexes = filtered.filter(e => !matchedBaseKeys.has(e[0]));
     if (fullyCustomIndexes.length > 0) {
         for (const [k, v] of fullyCustomIndexes) {
             let k2 = k;
@@ -420,6 +480,8 @@ if (typeof module !== 'undefined' && module.exports) {
         isEmptyObject,
         cleanupAndConvertToLucene,
         deepDiff,
+        diffAllowedValueChanges,
+        deepMerge,
         isOutOfTheBoxIndex
     };
 }
