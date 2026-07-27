@@ -4,7 +4,8 @@
   "description": "Oak Tools - Index Definition Generator and utilities",
   "scripts": {
     "test": "node js/indexDefGenerator.test.js",
-    "test:indexdef": "node js/indexDefGenerator.test.js"
+    "test:indexdef": "node js/indexDefGenerator.test.js",
+    "test:analyzer": "node js/indexDefAnalyzer.test.js"
   },
   "keywords": ["oak", "lucene", "index", "sql2", "xpath", "jcr"],
   "author": "Oak Tools",
