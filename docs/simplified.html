@@ -58,13 +58,13 @@
                     In the Git repository of your program, 
                     in the directory <code>ui.apps/src/main/content/jcr_root/_oak_index</code>,
                     create a new directory named <code>diff.index</code>.
-                    Inside it, create a new file called <code>.content.xml</code>,
-                    with the following content. You will not need to change this file later.
+                    Inside it, create a new file called <code>.content.xml</code>, with the content below.
+                    You will not need to change this file later.
                     It is needed currently for compatibility with the existing tooling.
                     (The "type" property is set to "lucene", otherwise the pipeline run will fail.
                     The includedPaths and queryPaths need to be set to a non-existent path, 
                     to avoid that existing tooling will build a large index.)
-                </p>   
+                </p>
     <pre>
     &lt;?xml version="1.0" encoding="UTF-8"?>&lt;jcr:root
         xmlns:jcr="http://www.jcp.org/jcr/1.0"
@@ -81,6 +81,14 @@
         &lt;filter root="/oak:index/diff.index" />
     </pre>
                 </p>
+                <p>
+                    Verify that there is no file named <code>ui.apps/src/main/content/jcr_root/_oak_index/.content.xml</code>,
+                    because such a file would take precedence, and this would result in
+                    <code>ValidationViolation: Mandatory child node missing: jcr:content</code>.
+                    If you have such a file, create separate directories for each index and move the definitions (in the form of separate <code>.content.xml</code> files)
+                    to the respective child, for example
+                    <code>ui.apps/src/main/content/jcr_root/_oak_index/acme.legacyIndex/.content.xml</code>.
+                </p>   
                 <h3 id="deploy-the-diff-index">Deploy the Diff Index</h3>
                 <p>
                     Run the pipeline to deploy the diff index.
