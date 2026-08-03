@@ -252,6 +252,8 @@
                 <li>A <code>mergeInfo</code> and <code>mergeChecksum</code> property are added to every merged index.</li>
                 <li>Old versions of the same base index are removed after the new version is created.</li>
                 <li>If a previously merged index (one with a <code>mergeInfo</code> property) is no longer referenced in the diff, the merged index is removed.</li>
+                <li>When migrating to simplified index management, if an index no longer needs to be customized, for example <code>ntBaseLucene</code> or <code>cqPageLucene</code>, 
+                    then see <a href="https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/operations/indexing#undoing-a-change">Undoing a Change</a>.
             </ul>
             
             <h2 id="merge-rules">Merge Rules</h2>
