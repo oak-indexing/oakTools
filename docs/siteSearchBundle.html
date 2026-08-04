@@ -148,9 +148,14 @@ OPTION (INDEX TAG cqSiteSearch)</pre>
                 <tr><td><code>scheduler.concurrent</code></td><td><code>false</code></td><td>Prevent overlapping runs</td></tr>
             </table>
 
-            <p>The bundle itself is configured via OSGi PID <code>com.adobe.aem.indexing.expand.config.ExpandedPageIndexConfig</code>:</p>
+            <p>The bundle itself is configured via OSGi PID <code>com.adobe.aem.indexing.expand.service.SearchableIndexServiceImpl</code>:</p>
             <table class="props">
                 <tr><th>Property</th><th>Default</th><th>Description</th></tr>
+                <tr>
+                    <td><code>searchMode</code></td>
+                    <td><code>ORIGINAL</code></td>
+                    <td>Where to write the <code>cq:Searchable</code> mixin and search properties — <code>ORIGINAL</code> (on the original <code>/content</code> nodes) or <code>MIRROR</code> (on <code>/var/indexing/expanded-pages</code> nodes). See <a class="inline" href="#mirror-mode">Mirror Mode</a>.</td>
+                </tr>
                 <tr>
                     <td><code>referencePropertyPattern</code></td>
                     <td><code>fragmentPath</code></td>
@@ -165,6 +170,11 @@ OPTION (INDEX TAG cqSiteSearch)</pre>
                     <td><code>contentPropertyPattern</code></td>
                     <td><em>(empty)</em></td>
                     <td>Regex (full match) applied to property names inside the fragment's <code>jcr:content/data/master</code> node. All matching properties are extracted as body text (pattern-driven / Telekom style). Leave empty to disable.</td>
+                </tr>
+                <tr>
+                    <td><code>applySearchableToFragments</code></td>
+                    <td><code>false</code></td>
+                    <td>When <code>true</code>, applies the <code>cq:Searchable</code> mixin directly to Content Fragment nodes as well, making CFs searchable alongside pages. Requires version 1.5.7 or later. Disabled by default.</td>
                 </tr>
             </table>
 
@@ -270,7 +280,7 @@ OPTION (INDEX TAG cqSiteSearch)</pre>
                 An alternative MIRROR mode writes them to <code>/var/indexing/expanded-pages</code> instead, keeping <code>/content</code> untouched.
                 To enable it, add an OSGi config to your <code>ui.config</code>:
             </p>
-            <p><strong><code>ui.config/.../osgiconfig/config/com.adobe.aem.indexing.expand.config.ExpandedPageIndexConfig.cfg.json</code></strong></p>
+            <p><strong><code>ui.config/.../osgiconfig/config/com.adobe.aem.indexing.expand.service.SearchableIndexServiceImpl.cfg.json</code></strong></p>
 <pre>{
   "searchMode": "MIRROR"
 }</pre>
