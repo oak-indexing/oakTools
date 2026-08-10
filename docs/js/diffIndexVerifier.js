@@ -51,6 +51,7 @@ const KNOWN_NAMES = new Set([
     'guidesKonnect',
     'guidesMapCollectionV2',
     'guidesPeerLinks',
+    'guidesReviewTopics',
     'models',
     'ntFolderDamLucene',
     'repAccessControllableDamLucene',
