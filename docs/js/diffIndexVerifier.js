@@ -105,7 +105,7 @@ function validateDiffIndex(parsed) {
     const blocked = keys.filter(k => BLOCKED_NAMES.has(k));
     if (blocked.length > 0) {
         for (const k of blocked) {
-            lines.push(`validateCustomizableIndex: FAIL "${k}" — Can not customize these indexes currently with simplified index management, because these indexes contain a version number. This will be supported in future release.`);
+            lines.push(`validateCustomizableIndex: FAIL "${k}" — Can not customize these indexes currently with simplified index management, because this index / these indexes don't contain a version number. This will be supported in future release.`);
         }
         return lines;
     }
