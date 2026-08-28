@@ -147,83 +147,30 @@ function deepMerge(target, source) {
 }
 
 function isOutOfTheBoxIndex(path) {
-    const oobPrefixes = [
-        "/oak:index/aemformsAFReferenceLuceneIndex",
-        "/oak:index/appsLibsLucene",
-        "/oak:index/assetLinkShare",
-        "/oak:index/assetPrefixNodename",
-        "/oak:index/authorizables",
-        "/oak:index/cmLucene",
-        "/oak:index/commerceLucene",
-        "/oak:index/contentFragments",
-        "/oak:index/contentResourceType",
-        "/oak:index/cqContentFragment",
-        "/oak:index/cqContentReference",
-        "/oak:index/cqLiveSyncCancelledLucene",
-        "/oak:index/cqMasterLucene",
-        "/oak:index/cqPageContent",
-        "/oak:index/cqPageLucene",
-        "/oak:index/cqProjectLucene",
-        "/oak:index/cqReportsLucene",
-        "/oak:index/cqSiteSearch",
-        "/oak:index/cqTagLucene",
-        "/oak:index/cqTags",
-        "/oak:index/cqVarCacheableDepsLucene",
-        "/oak:index/damAssetLucene",
-        "/oak:index/damAssetStateIndex",
-        "/oak:index/damCollectionLucene",
-        "/oak:index/damUploadStaging",
-        "/oak:index/designFiles",
-        "/oak:index/experienceFragmentsIndex",
-        "/oak:index/formsManagerCcmForm",
-        "/oak:index/formsTemplateLucene",
-        "/oak:index/fragments",
-        "/oak:index/graphqlConfig",
-        "/oak:index/guidesAssetProperties",
-        "/oak:index/guidesKonnect",
-        "/oak:index/guidesMapCollectionV2",
-        "/oak:index/guidesPeerLinks",
-        "/oak:index/guidesProperties",
-        "/oak:index/guidesReviewTopics",
-        "/oak:index/internalVerificationLucene",
-        "/oak:index/models",
-        "/oak:index/nodetypeLucene",
-        "/oak:index/ntBaseLucene",
-        "/oak:index/ntFileFolderLucene",
-        "/oak:index/ntFolderDamLucene",
-        "/oak:index/ntHierarchyLucene",
-        "/oak:index/packageLucene",
-        "/oak:index/pathReference",
-        "/oak:index/repACLIndex",
-        "/oak:index/repAccessControllableDamLucene",
-        "/oak:index/repTokenIndex",
-        "/oak:index/screensContentJcrPrimaryType",
-        "/oak:index/screensSmartSyncJcrPrimaryType",
-        "/oak:index/siteEditorIndex",
-        "/oak:index/slingeventJob",
-        "/oak:index/slingQuickSites",
-        "/oak:index/slingResourceResolver",
-        "/oak:index/slingSitemaps",
-        "/oak:index/socialLucene",
-        "/oak:index/versionStoreIndex",
-        "/oak:index/workflowDataLucene",
-        "/oak:index/workflowMetaDataIndex",
+    let includedPathNames, blockedNames, knownNames;
+    if (typeof module !== 'undefined' && module.exports) {
+        ({ INCLUDED_PATH_NAMES: includedPathNames, BLOCKED_NAMES: blockedNames, KNOWN_NAMES: knownNames } = require('./diffIndexVerifier.js'));
+    } else {
+        includedPathNames = INCLUDED_PATH_NAMES;
+        blockedNames = BLOCKED_NAMES;
+        knownNames = KNOWN_NAMES;
+    }
 
-        // not really out-of-the-box, but relatively common
-        "/oak:index/algoliaFragmentsIndex",
-        "/oak:index/algoliaHitTemplate",
-        "/oak:index/commerceDam",
-        "/oak:index/commerceExperienceFragments",
-        "/oak:index/contentFragmentLucene",
-        "/oak:index/cqAuditLucene",
-        "/oak:index/cqLiveSyncCancelled",
-        "/oak:index/enablementResourceName",
-        "/oak:index/experienceFragments",
-        "/oak:index/lucene",
-        "/oak:index/glpropertyIndex",
-        "/oak:index/workfrontDocumentId"
+    // not really out-of-the-box, but relatively common
+    const commonNames = [
+        'algoliaFragmentsIndex',
+        'algoliaHitTemplate',
+        'cqAuditLucene',
+        'enablementResourceName',
+        'glpropertyIndex',
+        'workfrontDocumentId',
     ];
-    return oobPrefixes.some(prefix => path.startsWith(prefix));
+
+    const oobNames = new Set([...includedPathNames, ...blockedNames, ...knownNames, ...commonNames]);
+    return [...oobNames].some(name => {
+        const prefix = "/oak:index/" + name;
+        return path === prefix || path.startsWith(prefix + "-");
+    });
 }
 
 /**
@@ -258,6 +205,10 @@ function analyzeIndexDefinitions(input) {
             continue;
         }
         if (value.type === "disabled") {
+            delete obj[k];
+            continue;
+        }
+        if (isEmptyObject(value)) {
             delete obj[k];
             continue;
         }

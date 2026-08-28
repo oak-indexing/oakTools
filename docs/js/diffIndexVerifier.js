@@ -37,10 +37,14 @@ const KNOWN_NAMES = new Set([
     'cqMasterLucene',
     'cqPageContent',
     'cqPageLucene',
+    'cqSiteSearch',
+    'cqTags',
+    'cqTagUuidLucene',
     'cqVarCacheableDepsLucene',
     'damAssetLucene',
     'damAssetStateIndex',
     'damCollectionLucene',
+    'damUploadStaging',
     'designFiles',
     'experienceFragments',
     'experienceFragmentsIndex',
@@ -51,10 +55,19 @@ const KNOWN_NAMES = new Set([
     'guidesKonnect',
     'guidesMapCollectionV2',
     'guidesPeerLinks',
+    'guidesProperties',
     'guidesReviewTopics',
+    'internalVerificationLucene',
     'models',
+    'ntFileFolderLucene',
     'ntFolderDamLucene',
+    'ntHierarchyLucene',
+    'packageLucene',
+    'repACLIndex',
     'repAccessControllableDamLucene',
+    'repTokenIndex',
+    'screensContentJcrPrimaryType',
+    'screensSmartSyncJcrPrimaryType',
     'slingQuickSites',
     'slingSitemaps',
     'slingeventJob',
@@ -236,5 +249,5 @@ function validateDiffIndex(parsed) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { validateDiffIndex };
+    module.exports = { validateDiffIndex, INCLUDED_PATH_NAMES, BLOCKED_NAMES, KNOWN_NAMES };
 }
