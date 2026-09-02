@@ -260,13 +260,13 @@
             <p>
                 The following rules apply when merging a diff with an OOTB index:
             </p>
-            <h3 id="top-level-property-merging">Top-Level Property Merging</h3>
-            <p>The following rules apply to the properties at the top level (properties of the index):</p>
+            <h3 id="top-level-property-merging">Top-Level Entries</h3>
+            <p>The following rules apply at the top level of an index definition:</p>
             <ul>
-                <li><code>includedPaths</code>, <code>queryPaths</code>, and <code>tags</code> are merged (union of old and new values) rather than overwritten, if the property already exists. The properties <code>includedPaths</code> and <code>queryPaths</code> may not be added if they don't exist yet (to avoid making the index more restrictive).</li>
-                <li>In addition to the above, the following properties may also not be added to an existing (OOTB) index: <code>selectionPolicy</code>, <code>valueRegex</code>, <code>queryFilterRegex</code>, <code>excludedPaths</code>. They are dropped with a warning.</li>
-                <li>Other new properties that don't exist on the target are added.</li>
-                <li>Properties that already exist may not be overwritten.</li>
+                <li><code>includedPaths</code>, <code>queryPaths</code>, and <code>tags</code> are merged (union of old and new values) rather than overwritten, if they already exist. <code>includedPaths</code> and <code>queryPaths</code> may not be added if they don't exist yet (to avoid making the index more restrictive).</li>
+                <li>In addition to the above, the following may also not be added to an existing (OOTB) index: <code>selectionPolicy</code>, <code>valueRegex</code>, <code>queryFilterRegex</code>, <code>excludedPaths</code>. They are dropped with a warning.</li>
+                <li>Other new entries that don't exist on the target are added.</li>
+                <li>Entries that already exist may not be overwritten.</li>
             </ul>
             <p>Example:</p>
 <pre>
@@ -289,21 +289,22 @@
 
             <h3 id="indexed-property-rules">Indexed Property Rules</h3>
             <ul>
-                <li>When adding a new child under a <code>properties</code> node, the merger first tries to <strong>match by <code>name</code></strong> value: if an existing child has the same <code>name</code>, the diff is applied to that child (even if the child node name differs).</li>
-                <li>Similarly, it tries to <strong>match by <code>function</code></strong> value for function-based index properties.</li>
-                <li>If no match is found, a new child node is created.</li>
-                <li>The following properties may not be added to an existing child node, and may not be updated: <code>isRegexp</code>, <code>index</code>, <code>function</code>, <code>name</code>. This prevents changing how an existing property is indexed.</li>
-                <li>Existing property values may not be overwritten, except for <code>boost</code>, <code>weight</code>, and <code>secure</code>.</li>
+                <li>When adding a new child under a <code>properties</code> node, the merger first tries to <strong>match by <code>name</code></strong> value: if an existing indexed property has the same <code>name</code>, the diff is applied to that child (even if the child's node name differs).</li>
+                <li>Similarly, it tries to <strong>match by <code>function</code></strong> value for function-based indexed properties.</li>
+                <li>If no match is found, a new child is created.</li>
+                <li>On a matched (existing) indexed property, the following may neither be added nor changed: <code>isRegexp</code>, <code>index</code>, <code>function</code>, <code>name</code>. This prevents changing how an existing property is indexed.</li>
+                <li>Any other entry that does not yet exist on the matched child <em>is</em> added &mdash; for example <code>nullCheckEnabled</code> or <code>ordered</code>.</li>
+                <li>Existing values on a matched child may not be overwritten, except for <code>boost</code>, <code>weight</code>, and <code>secure</code>.</li>
             </ul>
             <h3 id="merging-details">Merging Details</h3>
             <p>In addition, the following rules are used when merging. In most cases, they are irrelevant, but listed here for completeness.</p>
             <ul>
-                <li>Before comparing indexes, a cleaned and normalized version is produced: properties like <code>reindex</code>, <code>reindexCount</code>, <code>refresh</code>, <code>seed</code>, <code>:version</code>, <code>:nameSeed</code>, <code>:mappingVersion</code>, <code>merges</code>, <code>mergeInfo</code>, and <code>mergeChecksum</code> are stripped.</li>
+                <li>Before comparing indexes, a cleaned and normalized version is produced: entries such as <code>reindex</code>, <code>reindexCount</code>, <code>refresh</code>, <code>seed</code>, <code>:version</code>, <code>:nameSeed</code>, <code>:mappingVersion</code>, <code>merges</code>, <code>mergeInfo</code>, and <code>mergeChecksum</code> are stripped.</li>
                 <li>Oak-style string prefixes (<code>str:</code>, <code>nam:</code>, <code>dat:</code>) are normalized away for comparison.</li>
-                <li>The <code>jcr:primaryType</code> property is silently ignored at the top level.</li>
-                <li>Technically, rules in the "Indexed Property Rules" also apply to other child nodes, however in practice these properties are only useful in the <code>properties</code> child node.</li>
-                <li>All <code>jcr:uuid</code> properties are removed (new UUIDs are generated when needed).</li>
-                <li>Property order is ignored during comparison (properties are sorted alphabetically), but child node order is significant.</li>
+                <li>The <code>jcr:primaryType</code> is silently ignored at the top level.</li>
+                <li>Technically, rules in the "Indexed Property Rules" also apply to other child nodes, however in practice these are only useful in the <code>properties</code> child node.</li>
+                <li>All <code>jcr:uuid</code> entries are removed (new UUIDs are generated when needed).</li>
+                <li>Entry order is ignored during comparison (entries are sorted alphabetically), but child order is significant.</li>
                 <li>A SHA-256 checksum is computed on the merged definition to detect changes efficiently across runs.</li>
             </ul>
 
