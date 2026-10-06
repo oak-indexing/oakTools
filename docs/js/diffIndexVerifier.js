@@ -93,7 +93,14 @@ function toSortedArray(value) {
     return (Array.isArray(value) ? value : [value]).slice().sort();
 }
 
+function hasInvalidNameChars(key) {
+    return key.includes('-') || key.includes('/');
+}
+
 function verifyName(key) {
+    if (hasInvalidNameChars(key)) {
+        return false;
+    }
     return key.includes('.') || KNOWN_NAMES.has(key);
 }
 
@@ -129,7 +136,11 @@ function validateDiffIndex(parsed) {
         lines.push('verifyName: OK');
     } else {
         for (const k of bad) {
-            lines.push(`verifyName: FAIL "${k}" — name must contain a dot or be a known index name without version number`);
+            if (hasInvalidNameChars(k)) {
+                lines.push(`verifyName: FAIL "${k}" — name must not contain dashes (-) or slashes (/)`);
+            } else {
+                lines.push(`verifyName: FAIL "${k}" — name must contain a dot or be a known index name without version number`);
+            }
         }
     }
 

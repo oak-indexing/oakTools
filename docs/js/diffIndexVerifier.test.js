@@ -100,6 +100,20 @@ runner.test('validateFacetConfig should PASS when facets.secure is a different v
     this.assertEqual(statisticalLines, ['validateFacetConfig: OK'], 'Should pass when facets.secure is "statistical"');
 });
 
+runner.test('verifyName should FAIL when name contains a dash or slash', function() {
+    for (const name of ['acme.pageProperty-1-custom-1', 'acme/test']) {
+        const lines = validateDiffIndex({ [name]: {} }).filter(l => l.startsWith('verifyName'));
+        this.assertEqual(lines, [`verifyName: FAIL "${name}" — name must not contain dashes (-) or slashes (/)`], `for "${name}"`);
+    }
+});
+
+runner.test('verifyName should PASS for valid names', function() {
+    for (const name of ['acme.pageProperty', 'damAssetLucene']) {
+        const lines = validateDiffIndex({ [name]: {} }).filter(l => l.startsWith('verifyName'));
+        this.assertEqual(lines, ['verifyName: OK'], `for "${name}"`);
+    }
+});
+
 // Run the tests
 if (require.main === module) {
     runner.run().catch(console.error);
