@@ -124,7 +124,9 @@
             
             try {
                 const text = textInput.value;
-                const base64 = btoa(text);
+                const bytes = new TextEncoder().encode(text);
+                const binary = Array.from(bytes, byte => String.fromCharCode(byte)).join('');
+                const base64 = btoa(binary);
                 base64Input.value = base64;
                 textError.style.display = 'none';
             } catch (error) {
@@ -140,11 +142,13 @@
             
             try {
                 const base64 = base64Input.value;
-                const text = atob(base64);
+                const binary = atob(base64);
+                const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+                const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
                 textInput.value = text;
                 base64Error.style.display = 'none';
             } catch (error) {
-                base64Error.textContent = 'Error converting base64 to text: Invalid base64 string';
+                base64Error.textContent = 'Error converting base64 to text: ' + error.message;
                 base64Error.style.display = 'block';
             }
         }

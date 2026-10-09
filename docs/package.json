@@ -6,7 +6,8 @@
     "test": "node js/indexDefGenerator.test.js",
     "test:indexdef": "node js/indexDefGenerator.test.js",
     "test:analyzer": "node js/indexDefAnalyzer.test.js",
-    "test:verifier": "node js/diffIndexVerifier.test.js"
+    "test:verifier": "node js/diffIndexVerifier.test.js",
+    "test:base64": "node js/base64.test.js"
   },
   "keywords": ["oak", "lucene", "index", "sql2", "xpath", "jcr"],
   "author": "Oak Tools",
