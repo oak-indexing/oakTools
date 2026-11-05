@@ -67,8 +67,9 @@
                 the <code>cqSiteSearch</code> Oak Elasticsearch index.
             </p>
             <p>
-                Search properties are written directly to the original <code>/content</code> nodes.
-                A lightweight mirror at <code>/var/indexing/expanded-pages</code> is maintained for operational tracking
+                By default (<strong>ORIGINAL mode</strong>), search properties are written directly to the original <code>/content</code> nodes.
+                An alternative <strong>MIRROR mode</strong> writes them to a shadow tree at <code>/var/indexing/expanded-pages</code> instead.
+                Either way, a lightweight mirror at <code>/var/indexing/expanded-pages</code> is always maintained for operational tracking
                 (dirty flags, Content Fragment backreferences).
             </p>
 
@@ -84,16 +85,30 @@
     &lt;/repository&gt;
 &lt;/repositories&gt;</pre>
 
-            <h3>2. Embed the bundle in <code>all/pom.xml</code></h3>
+            <h3>2. Add a version property to the root <code>pom.xml</code></h3>
+<pre>&lt;expanded.pages.version&gt;1.6.2&lt;/expanded.pages.version&gt;</pre>
+
+            <h3>3. Add dependency management to the root <code>pom.xml</code></h3>
+<pre>&lt;dependency&gt;
+    &lt;groupId&gt;com.adobe.aem.indexing&lt;/groupId&gt;
+    &lt;artifactId&gt;expanded-page-index&lt;/artifactId&gt;
+    &lt;version&gt;${expanded.pages.version}&lt;/version&gt;
+&lt;/dependency&gt;</pre>
+
+            <h3>4. Embed the bundle in <code>all/pom.xml</code></h3>
             <p>In the <code>&lt;embeddeds&gt;</code> block of <code>filevault-package-maven-plugin</code>:</p>
 <pre>&lt;embedded&gt;
     &lt;groupId&gt;com.adobe.aem.indexing&lt;/groupId&gt;
     &lt;artifactId&gt;expanded-page-index&lt;/artifactId&gt;
-    &lt;version&gt;1.5.6&lt;/version&gt;
     &lt;target&gt;/apps/your-packages/application/install&lt;/target&gt;
 &lt;/embedded&gt;</pre>
+            <p>In the <code>&lt;dependencies&gt;</code> block:</p>
+<pre>&lt;dependency&gt;
+    &lt;groupId&gt;com.adobe.aem.indexing&lt;/groupId&gt;
+    &lt;artifactId&gt;expanded-page-index&lt;/artifactId&gt;
+&lt;/dependency&gt;</pre>
 
-            <h3>3. Add OSGi configs to your <code>ui.config</code> module</h3>
+            <h3>5. Add OSGi configs to your <code>ui.config</code> module</h3>
             <p>
                 The bundle embeds its own repoinit and service user mapping via <code>Sling-Initial-Content</code>, but in AEM Cloud Service
                 there is a known ordering risk where the bundle can activate before the JCR Installer feeds those configs to ConfigAdmin.
@@ -102,7 +117,7 @@
             <p><strong><code>ui.config/.../osgiconfig/config/org.apache.sling.jcr.repoinit.RepositoryInitializer~expanded-page-index.cfg.json</code></strong></p>
 <pre>{
   "scripts": [
-    "create path (sling:Folder) /var/indexing/expanded-pages/content\n\ncreate service user expanded-page-index-service with forced path system/cq:services/expanded-page-index\n\nset principal ACL for expanded-page-index-service\n  allow jcr:read,jcr:modifyProperties,jcr:nodeTypeManagement on /content\n  allow jcr:all on /var\n  allow jcr:read on /oak:index\nend"
+    "create path (sling:Folder) /var/indexing/expanded-pages/content\n\ncreate service user expanded-page-index-service with forced path system/cq:services/expanded-page-index\n\nset principal ACL for expanded-page-index-service\n  allow jcr:read,jcr:modifyProperties,jcr:nodeTypeManagement on /content\n  allow jcr:read on /conf\n  allow jcr:all on /var\n  allow jcr:read on /oak:index\nend"
   ]
 }</pre>
             <p><strong><code>ui.config/.../osgiconfig/config/org.apache.sling.serviceusermapping.impl.ServiceUserMapperImpl.amended~expanded-page-index.cfg.json</code></strong></p>
@@ -112,7 +127,7 @@
   ]
 }</pre>
 
-            <h3>4. Deploy the Oak indexes</h3>
+            <h3>6. Deploy the Oak indexes</h3>
             <p>The bundle requires two Oak indexes before it activates. These are deployed by Adobe into your AEM Cloud Service environment:</p>
             <ul>
                 <li><code>cqPageMirror-1-custom-1</code> — tracks <code>cq:PageMirror</code> nodes (dirty flags, move detection)</li>
@@ -120,41 +135,30 @@
             </ul>
             <div class="note">
                 The bundle is a strict NOP until these two indexes are present — it is safe to deploy the bundle ahead of time and wait for index deployment.
-                The <code>cqSiteSearch-1-custom-1</code> Elasticsearch index is required for search queries to work, but is not a condition for the bundle to activate.
+                The <code>cqSiteSearch</code> Elasticsearch index is required for search queries to work, but is not a condition for the bundle to activate.
             </div>
 
-            <h2 id="search-properties">Search Properties</h2>
-            <p>The bundle writes the following properties to each <code>cq:Page</code> node under <code>/content</code>:</p>
-            <table class="props">
-                <tr><th>Property</th><th>Description</th></tr>
-                <tr><td><code>cq:searchTitle</code></td><td>Page title</td></tr>
-                <tr><td><code>cq:searchDescription</code></td><td>Page description</td></tr>
-                <tr><td><code>cq:searchContent</code></td><td>Extracted page body (multi-value, HTML stripped)</td></tr>
-            </table>
-
-            <h3>Search query</h3>
-<pre>SELECT [cq:searchTitle], [cq:searchDescription], [jcr:path]
-FROM [cq:Searchable]
-WHERE ISDESCENDANTNODE('/content/mysite/us/en')
-AND contains(*, 'search terms')
-OPTION (INDEX TAG cqSiteSearch)</pre>
-
             <h2 id="configuration">Configuration</h2>
-
-            <p>The scheduler runs every 30 seconds by default. To change the interval, configure OSGi PID <code>com.adobe.aem.indexing.expand.scheduler.ExpandedPageIndexScheduler</code>:</p>
-            <table class="props">
-                <tr><th>Property</th><th>Default</th><th>Description</th></tr>
-                <tr><td><code>scheduler.expression</code></td><td><code>0/30 * * * * ?</code></td><td>Cron expression</td></tr>
-                <tr><td><code>scheduler.concurrent</code></td><td><code>false</code></td><td>Prevent overlapping runs</td></tr>
-            </table>
-
-            <p>The bundle itself is configured via OSGi PID <code>com.adobe.aem.indexing.expand.service.SearchableIndexServiceImpl</code>:</p>
+            <p>
+                The bundle and its scheduler are both configured via a single OSGi PID <code>com.adobe.aem.indexing.expand.service.SearchableIndexServiceImpl</code>
+                ("Expanded Page Index Configuration" in the OSGi Configuration Manager):
+            </p>
             <table class="props">
                 <tr><th>Property</th><th>Default</th><th>Description</th></tr>
                 <tr>
+                    <td><code>cron.expression</code></td>
+                    <td><code>0/30 * * * * ?</code></td>
+                    <td>Cron expression controlling how often the scheduler triggers a run</td>
+                </tr>
+                <tr>
+                    <td><code>concurrent</code></td>
+                    <td><code>false</code></td>
+                    <td>Allow a new run to start while a previous one is still executing</td>
+                </tr>
+                <tr>
                     <td><code>searchMode</code></td>
                     <td><code>ORIGINAL</code></td>
-                    <td>Where to write the <code>cq:Searchable</code> mixin and search properties — <code>ORIGINAL</code> (on the original <code>/content</code> nodes) or <code>MIRROR</code> (on <code>/var/indexing/expanded-pages</code> nodes). See <a class="inline" href="#mirror-mode">Mirror Mode</a>.</td>
+                    <td>Where to write <code>cq:Searchable</code> — <code>ORIGINAL</code> (on <code>/content</code> nodes) or <code>MIRROR</code> (on <code>/var/indexing/</code> nodes). See <a class="inline" href="#search-modes">Search Modes</a>.</td>
                 </tr>
                 <tr>
                     <td><code>referencePropertyPattern</code></td>
@@ -174,11 +178,62 @@ OPTION (INDEX TAG cqSiteSearch)</pre>
                 <tr>
                     <td><code>applySearchableToFragments</code></td>
                     <td><code>false</code></td>
-                    <td>When <code>true</code>, applies the <code>cq:Searchable</code> mixin directly to Content Fragment nodes as well, making CFs searchable alongside pages. Requires version 1.5.7 or later. Disabled by default.</td>
+                    <td>When <code>true</code>, applies the <code>cq:Searchable</code> mixin to Content Fragment nodes directly, making CFs searchable alongside pages. See <a class="inline" href="#fragment-indexing">Fragment Indexing</a>.</td>
+                </tr>
+                <tr>
+                    <td><code>extractionStrategy</code></td>
+                    <td><code>RENDER</code></td>
+                    <td>How page body text is extracted — <code>RENDER</code> (render the page and extract text from the HTML) or <code>PROPERTY_WALK</code> (walk JCR properties via regex). See <a class="inline" href="#page-extraction-strategy">Page Extraction Strategy</a>.</td>
+                </tr>
+                <tr>
+                    <td><code>renderTimeoutMs</code></td>
+                    <td><code>5000</code></td>
+                    <td>RENDER mode only. Per-page render timeout (ms); a page exceeding this is treated as a transient failure and retried on the next scheduled run.</td>
+                </tr>
+                <tr>
+                    <td><code>renderBatchSize</code></td>
+                    <td><code>50</code></td>
+                    <td>RENDER mode only. Max dirty pages processed per scheduler tick, since each render is expensive. <code>PROPERTY_WALK</code> processes all dirty pages in a single run.</td>
+                </tr>
+                <tr>
+                    <td><code>maxRetryAttempts</code></td>
+                    <td><code>5</code></td>
+                    <td>After this many consecutive extraction failures for a page, stop retrying automatically and mark it <code>failed=true</code> (excluded from the dirty queue) rather than let it block other pages forever. Applies to both extraction strategies.</td>
                 </tr>
             </table>
 
-            <h3>Content Fragment extraction strategies</h3>
+            <h3 id="page-extraction-strategy">Page Extraction Strategy</h3>
+            <p>
+                Two strategies control how a page's body text (and Content Fragment references) are extracted. Only one is active at a time, selected via
+                <code>extractionStrategy</code>. <code>RENDER</code> is the default and needs no further configuration; <code>PROPERTY_WALK</code> is for
+                finer-grained control over what gets indexed.
+            </p>
+            <p>
+                <strong><code>RENDER</code> (default)</strong> — renders each page through Sling's own request-processing pipeline (<code>SlingInternalRequest</code>)
+                and extracts text from the resulting HTML's <code>&lt;main&gt;</code> landmark (falling back to <code>&lt;body&gt;</code>).
+                Content Fragment references are discovered automatically during the render (no <code>referencePropertyPattern</code>/<code>contentPropertiesPropertyName</code>/<code>contentPropertyPattern</code>
+                config needed) — a wrapping <code>ResourceResolver</code> records every Content Fragment actually resolved while rendering the page and its nested includes/components.
+                Use this when components don't expose extractable properties, or when the rendered output (not raw property values) best represents what should be searchable.
+            </p>
+            <p>Notes on <code>RENDER</code> mode:</p>
+            <ul>
+                <li>Experience Fragment container pages (which redirect to <code>/master</code> on a direct render) are skipped rather than rendered.</li>
+                <li>Each render runs on its own timeout-bounded worker thread with its own dedicated <code>ResourceResolver</code>, so a hung render never blocks or races other pages.</li>
+                <li>The mirror node's <code>extractedVia</code> property records which strategy (<code>PROPERTY_WALK</code> or <code>RENDER</code>) produced each page's content.</li>
+                <li><code>renderBatchSize</code> and <code>renderTimeoutMs</code> only apply to this mode.</li>
+            </ul>
+            <p>
+                <strong><code>PROPERTY_WALK</code></strong> — walks the page's JCR properties and extracts text via the
+                <a class="inline" href="#cf-extraction-strategies">Content Fragment extraction strategies</a> below
+                (<code>referencePropertyPattern</code>, <code>contentPropertiesPropertyName</code>, <code>contentPropertyPattern</code>).
+                Cheap and fast; requires components to expose text-bearing properties that the configured patterns can find. Enable it explicitly:
+            </p>
+<pre>{
+  "extractionStrategy": "PROPERTY_WALK"
+}</pre>
+
+            <h3 id="cf-extraction-strategies">Content Fragment extraction strategies</h3>
+            <p><em>(Used by <code>PROPERTY_WALK</code> mode only — <code>RENDER</code> mode discovers Content Fragment references automatically, see above.)</em></p>
             <p>Two strategies control how text is pulled out of referenced Content Fragments. They run <strong>independently</strong> and can be used simultaneously.</p>
             <ul>
                 <li>
@@ -190,17 +245,160 @@ OPTION (INDEX TAG cqSiteSearch)</pre>
                     every matching property is extracted. Use this when components do not declare field names, or to extract fields from many different CF models uniformly.
                 </li>
             </ul>
+            <div class="note">
+                <strong>Note on <code>contentPropertyPattern</code>:</strong> this same regex is also used by <a class="inline" href="#fragment-indexing">standalone fragment indexing</a>
+                (<code>applySearchableToFragments</code>) to decide what a CF's <em>own</em> search document contains. Both uses answer the same question
+                ("what is this fragment's searchable substance?") for two different destinations: here, the answer becomes content <em>added to a referencing page</em>;
+                there, it becomes the <em>fragment's own</em> <code>cq:searchContent</code>. In practice a given deployment picks one of these two cases
+                (embed content in pages, or index fragments as standalone documents), so one shared pattern is sufficient.
+            </div>
             <p>Example config using both strategies together:</p>
 <pre>{
+  "searchMode": "ORIGINAL",
+  "extractionStrategy": "PROPERTY_WALK",
   "referencePropertyPattern": "cf.*Reference",
   "contentPropertiesPropertyName": "elementNames",
   "contentPropertyPattern": "body|text|description"
 }</pre>
 
-            <h2 id="mirror-structure">Mirror Structure</h2>
+            <h2 id="what-it-does">What It Does</h2>
             <p>
-                The mirror at <code>/var/indexing/expanded-pages</code> holds operational state only — dirty flags and CF backreferences.
-                It is not used for search.
+                The bundle extracts content from <code>cq:Page</code> nodes (including referenced Content Fragments) and applies the <code>cq:Searchable</code> mixin
+                with search properties to the target node (original or mirror, depending on mode). A lightweight mirror at <code>/var/indexing/expanded-pages</code>
+                tracks operational state regardless of mode.
+            </p>
+            <ul>
+                <li><strong>Real-time updates</strong> — JCR observation tracks page and Content Fragment changes automatically; runs only on the cluster leader to prevent concurrent write conflicts on publish</li>
+                <li><strong>Content Fragment support</strong> — dereferences and includes CF content in the extracted body</li>
+                <li><strong>Move handling</strong> — efficiently updates paths when pages are moved</li>
+                <li><strong>Incremental processing</strong> — only processes pages changed since the last run</li>
+                <li><strong>HTML stripping</strong> — indexes clean text, not markup</li>
+                <li><strong>Semantic search ready</strong> — compatible with Oak inference configs for vector embeddings</li>
+            </ul>
+
+            <h3>Content Fragment backreferences</h3>
+            <p>When a Content Fragment is updated, all pages referencing it are automatically re-indexed:</p>
+            <ol>
+                <li>Pages record which CFs they use (<code>fragmentReferences</code> property on the mirror node)</li>
+                <li>CF mirrors record which pages reference them (<code>referencedBy</code> property)</li>
+                <li>A CF update marks all referencing page mirrors dirty, triggering re-extraction on the next scheduled run</li>
+            </ol>
+            <p>
+                This works both through real-time JCR observation and a periodic catch-up scan over all CFs (the safety net for anything the observation listener misses,
+                e.g. a restart window) — the catch-up scan runs regardless of <code>applySearchableToFragments</code>, so it applies even if you only embed CF content
+                in pages and never index fragments as standalone documents.
+            </p>
+
+            <h2 id="search-modes">Search Modes</h2>
+
+            <h3>ORIGINAL (default)</h3>
+            <p><code>cq:Searchable</code> mixin and search properties are written to the original <code>/content</code> nodes. The Elasticsearch index covers <code>/content</code> directly.</p>
+            <p>Search query:</p>
+<pre>SELECT [cq:searchTitle], [cq:searchDescription], [jcr:path]
+FROM [cq:Searchable]
+WHERE ISDESCENDANTNODE('/content/mysite/us/en')
+AND contains(*, 'search terms')
+OPTION (INDEX TAG cqSiteSearch)</pre>
+
+            <h3 id="mirror-mode">MIRROR</h3>
+            <p><code>cq:Searchable</code> mixin and search properties are written to mirror nodes at <code>/var/indexing/expanded-pages</code>. The Elasticsearch index covers <code>/var/indexing/expanded-pages</code>.</p>
+            <p>Search query:</p>
+<pre>SELECT [cq:searchTitle], [cq:searchDescription], [path]
+FROM [cq:Searchable]
+WHERE ISDESCENDANTNODE('/var/indexing/expanded-pages/content/mysite/us/en')
+AND contains(*, 'search terms')
+OPTION (INDEX TAG cqSiteSearch)</pre>
+            <p>To switch to MIRROR mode, add an OSGi config to your <code>ui.config</code>:</p>
+            <p><strong><code>ui.config/.../osgiconfig/config/com.adobe.aem.indexing.expand.service.SearchableIndexServiceImpl.cfg.json</code></strong></p>
+<pre>{
+  "searchMode": "MIRROR"
+}</pre>
+
+            <h2 id="fragment-indexing">Fragment Indexing</h2>
+            <p>
+                By default only <code>cq:Page</code> nodes receive the <code>cq:Searchable</code> mixin. Set <code>applySearchableToFragments: true</code> to also index
+                Content Fragments directly, so CF-only searches return fragments as first-class results alongside pages.
+            </p>
+            <p><strong>Enable via OSGi config:</strong></p>
+<pre>{
+  "applySearchableToFragments": true
+}</pre>
+            <p><strong>What changes when enabled:</strong></p>
+            <ul>
+                <li>Phase 0 applies <code>cq:Searchable</code> to CF nodes in addition to propagating dirty flags to referencing pages</li>
+                <li>
+                    The periodic catch-up scan over <strong>all</strong> CFs under <code>/content/dam</code> (not only those referenced by a page) always runs, regardless of this flag —
+                    it's what catches a CF edit missed by the observation listener (e.g. a restart window) and propagates it to any referencing page.
+                    This flag only controls whether the scan's discovered CFs also get <code>cq:Searchable</code> applied directly to themselves.
+                </li>
+                <li>Stale CF mirrors whose original <code>/content/dam</code> node has been deleted are cleaned up on the next run</li>
+            </ul>
+            <p><strong>Where the mixin lands</strong> depends on <code>searchMode</code>:</p>
+            <table class="props">
+                <tr><th>Mode</th><th>CF target</th></tr>
+                <tr><td><code>ORIGINAL</code> (default)</td><td>Original CF node at <code>/content/dam/.../my-fragment</code></td></tr>
+                <tr><td><code>MIRROR</code></td><td>CF mirror node at <code>/var/indexing/expanded-pages/content/dam/.../my-fragment</code></td></tr>
+            </table>
+            <p>
+                <strong>Fragment body text</strong> is extracted using <code>contentPropertyPattern</code> only — the source-driven (<code>elementNames</code>) strategy requires
+                a component context and is not available for standalone CFs. Configure a pattern to extract body content:
+            </p>
+<pre>{
+  "applySearchableToFragments": true,
+  "contentPropertyPattern": "body|text|description"
+}</pre>
+            <p><strong>Searching pages and fragments (ORIGINAL mode):</strong></p>
+<pre>SELECT * FROM [cq:Searchable]
+WHERE ISDESCENDANTNODE('/content')
+AND contains(*, 'search terms')
+OPTION (INDEX TAG cqSiteSearch)</pre>
+            <p><strong>Searching pages and fragments (MIRROR mode):</strong></p>
+<pre>SELECT * FROM [cq:Searchable]
+WHERE ISDESCENDANTNODE('/var/indexing/expanded-pages/content')
+AND contains(*, 'search terms')
+OPTION (INDEX TAG cqSiteSearch)</pre>
+
+            <h2 id="use-cases">Choosing a configuration for your use case</h2>
+            <p>The options above combine differently depending on what you're trying to achieve. Three common scenarios:</p>
+
+            <h3>"I have pages and fragments, and I want both searchable — including fragments nobody references"</h3>
+            <p>
+                Set <code>applySearchableToFragments: true</code>. Fragment discovery scans <strong>all</strong> CFs under <code>/content/dam</code>, not just ones referenced
+                by a page, so un-referenced fragments are covered too. Pick a <code>contentPropertyPattern</code> that matches the fields that make up a fragment's own
+                searchable content (see the note on this pattern's dual role above).
+            </p>
+
+            <h3>"I want to control exactly what content fragment fields end up in a page's <code>cq:searchContent</code> — and avoid pulling in generic/shared fragment content"</h3>
+            <p>
+                Set <code>extractionStrategy</code> to <code>PROPERTY_WALK</code> and use <code>contentPropertiesPropertyName</code> (source-driven / WKND style) rather than
+                <code>contentPropertyPattern</code>. <code>contentPropertiesPropertyName</code> requires each component to explicitly declare the fragment fields it renders —
+                the most precise option, since it can't accidentally pick up a field just because its name matches a broad regex. <code>contentPropertyPattern</code> is coarser
+                (any field matching the pattern is pulled in, across every CF model), which is easier to set up but easier to over-match generic/shared fields with.
+                Avoid <code>RENDER</code> mode for this goal — it extracts whatever text is inside <code>&lt;main&gt;</code> on the rendered page, with no per-field control at all.
+            </p>
+
+            <h3>"I just want my pages searchable, including whatever text comes from the fragments they use — I don't need fragments searchable on their own"</h3>
+            <p>Leave <code>applySearchableToFragments</code> at its default (<code>false</code>). Either extraction strategy works, but they differ in setup cost:</p>
+            <ul>
+                <li><strong><code>RENDER</code></strong> (default) needs no Content Fragment configuration at all — CF references and their rendered text are discovered automatically from the page's actual rendered output.</li>
+                <li><strong><code>PROPERTY_WALK</code></strong> requires you to configure <code>referencePropertyPattern</code> (to find the CF reference property on your components) and at least one of <code>contentPropertiesPropertyName</code> / <code>contentPropertyPattern</code> (to decide what to pull from the fragment) — with nothing configured, referenced fragment content is silently skipped.</li>
+            </ul>
+            <p>So <code>RENDER</code> is the zero-config path for this use case; <code>PROPERTY_WALK</code> gives you more control (see the previous scenario) at the cost of having to configure it correctly for your components and CF models.</p>
+
+            <h2 id="search-properties">Search Properties</h2>
+            <p>Both modes expose the same properties on the <code>cq:Searchable</code> node:</p>
+            <table class="props">
+                <tr><th>Property</th><th>Description</th></tr>
+                <tr><td><code>cq:searchTitle</code></td><td>Page title</td></tr>
+                <tr><td><code>cq:searchDescription</code></td><td>Page description</td></tr>
+                <tr><td><code>cq:searchContent</code></td><td>Extracted page body (multi-value, HTML stripped)</td></tr>
+            </table>
+            <p>In ORIGINAL mode these sit on the <code>/content/...</code> page node. In MIRROR mode they sit on the corresponding <code>/var/indexing/expanded-pages/...</code> mirror node.</p>
+
+            <h2 id="mirror-structure">Mirror structure (operational tracking)</h2>
+            <p>
+                The mirror at <code>/var/indexing/expanded-pages</code> is always maintained regardless of mode.
+                It holds operational state only — no search properties in ORIGINAL mode.
             </p>
 <pre>/var/indexing/expanded-pages/
 ├── state/
@@ -212,7 +410,10 @@ OPTION (INDEX TAG cqSiteSearch)</pre>
                 └── page/    (cq:PageMirror)
                     ├── path                 = "/content/mysite/us/en/page"
                     ├── dirty                = false
-                    └── fragmentReferences   = ["/content/dam/fragments/..."]</pre>
+                    ├── fragmentReferences   = ["/content/dam/fragments/..."]
+                    ├── extractedVia         = "RENDER" | "PROPERTY_WALK"
+                    ├── retryCount           = 0      (consecutive extraction failures)
+                    └── failed               = false  (true once retryCount reaches maxRetryAttempts)</pre>
 
             <h2 id="management">Management</h2>
             <p>
@@ -224,6 +425,15 @@ OPTION (INDEX TAG cqSiteSearch)</pre>
                 <tr><td><code>runExtraction()</code></td><td>Process pages changed since the last run</td></tr>
                 <tr><td><code>rebuildMirror()</code></td><td>Delete the mirror and rebuild from scratch</td></tr>
                 <tr><td><code>clearMirror()</code></td><td>Delete the mirror without rebuilding</td></tr>
+                <tr><td><code>listFailedPages()</code></td><td>List the <code>/content</code> paths of pages marked <code>failed=true</code></td></tr>
+                <tr><td><code>retryFailedPages(pathPrefix)</code></td><td>Re-queue failed pages at or under <code>pathPrefix</code> (resets <code>failed</code>, <code>retryCount</code>, and marks them dirty)</td></tr>
+            </table>
+            <table class="props">
+                <tr><th>Attribute</th><th>Description</th></tr>
+                <tr><td><code>LastRunTime</code></td><td>Timestamp of the last successful extraction run, or <code>Never</code></td></tr>
+                <tr><td><code>MirrorStats</code></td><td><code>totalPages</code>, <code>totalFragments</code>, and <code>lastRunTime</code></td></tr>
+                <tr><td><code>MirrorBasePath</code></td><td><code>/var/indexing/expanded-pages</code></td></tr>
+                <tr><td><code>FailedPageCount</code></td><td>Number of pages currently marked <code>failed=true</code></td></tr>
             </table>
 
             <h2 id="troubleshooting">Troubleshooting</h2>
@@ -238,7 +448,7 @@ OPTION (INDEX TAG cqSiteSearch)</pre>
             <p>
                 The service user mapping was not processed before the bundle activated.
                 Add the <code>ServiceUserMapperImpl.amended</code> config to your <code>ui.config</code> module as described in
-                <a class="inline" href="#quickstart">Quickstart step 3</a>.
+                <a class="inline" href="#quickstart">Quickstart step 5</a>.
             </p>
 
             <h3>Bundle starts but mirror is empty</h3>
@@ -257,14 +467,15 @@ OPTION (INDEX TAG cqSiteSearch)</pre>
 
             <h3>Elasticsearch index is empty</h3>
             <ol>
-                <li>Confirm the <code>cq:Searchable</code> mixin is present on target nodes (CRXDE — check a <code>/content</code> page node)</li>
+                <li>Confirm the <code>cq:Searchable</code> mixin is present on target nodes (CRXDE — check a <code>/content</code> page in ORIGINAL mode, or a <code>/var/indexing/expanded-pages</code> mirror node in MIRROR mode)</li>
                 <li>Confirm the <code>elastic-async</code> lane is running — check <code>IndexStats</code> for <code>elastic-async</code> in the JMX console</li>
-                <li>Confirm <code>cqSiteSearch-1-custom-1</code> exists at <code>/oak:index/cqSiteSearch-1-custom-1</code> and has <code>type=elasticsearch</code></li>
+                <li>Confirm a <code>cqSiteSearch</code> index exists under <code>/oak:index</code> and has <code>type=elasticsearch</code></li>
             </ol>
 
             <h3>Searches return no results</h3>
             <ol>
                 <li>Confirm the Elasticsearch index contains documents (check via the Oak Query Diagnostics or ES API)</li>
+                <li>Confirm the search path in your query matches the mode — <code>/content/...</code> for ORIGINAL, <code>/var/indexing/expanded-pages/...</code> for MIRROR</li>
                 <li>Confirm <code>OPTION (INDEX TAG cqSiteSearch)</code> is present in your query</li>
             </ol>
 
@@ -274,17 +485,13 @@ OPTION (INDEX TAG cqSiteSearch)</pre>
                 <li>Check <code>error.log</code> for <code>"Previous extraction still running"</code> — a run is taking longer than the scheduler interval</li>
             </ul>
 
-            <h2 id="mirror-mode">Mirror Mode (advanced)</h2>
-            <p>
-                By default, <code>cq:Searchable</code> properties are written to the original <code>/content</code> nodes (ORIGINAL mode).
-                An alternative MIRROR mode writes them to <code>/var/indexing/expanded-pages</code> instead, keeping <code>/content</code> untouched.
-                To enable it, add an OSGi config to your <code>ui.config</code>:
-            </p>
-            <p><strong><code>ui.config/.../osgiconfig/config/com.adobe.aem.indexing.expand.service.SearchableIndexServiceImpl.cfg.json</code></strong></p>
-<pre>{
-  "searchMode": "MIRROR"
-}</pre>
-            <p>In MIRROR mode, adjust your search query to target <code>/var/indexing/expanded-pages</code> instead of <code>/content</code>.</p>
+            <h3>RENDER mode: pages stuck retrying / never indexed</h3>
+            <ul>
+                <li>Check <code>error.log</code> for <code>"Render timed out after &lt;N&gt;ms"</code> — increase <code>renderTimeoutMs</code> if pages are legitimately slow to render, or investigate why the render is hanging.</li>
+                <li>Check for <code>"Render returned status &lt;code&gt;"</code> — a non-200, non-redirect response (e.g. a component throwing) fails the render; fix the underlying rendering error.</li>
+                <li>A 3xx response is treated as retry-able, not a hard failure — Experience Fragment container pages are the one case that's expected and pre-filtered (never attempted). Other redirects usually indicate a page that isn't safely renderable standalone.</li>
+                <li>After <code>maxRetryAttempts</code> consecutive failures, the page mirror is marked <code>failed=true</code> and excluded from the dirty queue. Use the <code>FailedPageCount</code> attribute and <code>listFailedPages()</code> JMX operation to find them, and <code>retryFailedPages(pathPrefix)</code> to re-queue them once the cause is fixed.</li>
+            </ul>
 
             <h2 id="help">Help</h2>
             <p>If you have any issues or questions, please <a href="https://github.com/oak-indexing/oakTools/issues" target="_blank">open a ticket</a>.</p>
