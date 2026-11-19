@@ -70,7 +70,7 @@
                 By default (<strong>ORIGINAL mode</strong>), search properties are written directly to the original <code>/content</code> nodes.
                 An alternative <strong>MIRROR mode</strong> writes them to a shadow tree at <code>/var/indexing/expanded-pages</code> instead.
                 Either way, a lightweight mirror at <code>/var/indexing/expanded-pages</code> is always maintained for operational tracking
-                (dirty flags, Content Fragment backreferences).
+                (dirty flags, references to included Content Fragments and pages).
             </p>
 
             <h2 id="quickstart">Quickstart</h2>
@@ -86,7 +86,7 @@
 &lt;/repositories&gt;</pre>
 
             <h3>2. Add a version property to the root <code>pom.xml</code></h3>
-<pre>&lt;expanded.pages.version&gt;1.6.2&lt;/expanded.pages.version&gt;</pre>
+<pre>&lt;expanded.pages.version&gt;1.7.0&lt;/expanded.pages.version&gt;</pre>
 
             <h3>3. Add dependency management to the root <code>pom.xml</code></h3>
 <pre>&lt;dependency&gt;
@@ -130,13 +130,21 @@
             <h3>6. Deploy the Oak indexes</h3>
             <p>The bundle requires two Oak indexes before it activates. These are deployed by Adobe into your AEM Cloud Service environment:</p>
             <ul>
-                <li><code>cqPageMirror-1-custom-1</code> — tracks <code>cq:PageMirror</code> nodes (dirty flags, move detection)</li>
-                <li><code>cqFragmentMirror-1-custom-1</code> — tracks <code>cq:FragmentMirror</code> nodes (CF backreferences)</li>
+                <li><code>cqPageMirror-1-custom-1</code> — tracks <code>cq:PageMirror</code> nodes (dirty and failed flags)</li>
+                <li><code>cqFragmentMirror-1-custom-1</code> — tracks <code>cq:FragmentMirror</code> nodes (dirty flags)</li>
             </ul>
             <div class="note">
                 The bundle is a strict NOP until these two indexes are present — it is safe to deploy the bundle ahead of time and wait for index deployment.
                 The <code>cqSiteSearch</code> Elasticsearch index is required for search queries to work, but is not a condition for the bundle to activate.
             </div>
+
+            <h3 id="upgrading-1-7-0">Upgrading to 1.7.0</h3>
+            <ul>
+                <li><strong>Behaviour change (RENDER mode):</strong> components included from another page, such as reference components and Experience Fragments, are no longer indexed as part of the including page. Set <code>includeReferencedPageContent=true</code> to keep indexing them; see <a class="inline" href="#referenced-page-content">Referenced page content</a>.</li>
+                <li><strong>Re-extract after deploying:</strong> run <code>rebuildMirror()</code> (see <a class="inline" href="#management">Management</a>). Otherwise pages keep their previously indexed content until they next change.</li>
+                <li><strong>Mirror nodes:</strong> <code>fragmentReferences</code> is replaced by <code>references</code>, migrated automatically on each page's next extraction. Moves of Content Fragments and folders are now tracked like page moves. No index changes are needed.</li>
+                <li><strong>API:</strong> <code>Searchable.fragmentReferences()</code> is replaced by <code>references()</code>. This only matters if you use the bundle's <code>model</code> package directly.</li>
+            </ul>
 
             <h2 id="configuration">Configuration</h2>
             <p>
@@ -196,6 +204,11 @@
                     <td>RENDER mode only. Max dirty pages processed per scheduler tick, since each render is expensive. <code>PROPERTY_WALK</code> processes all dirty pages in a single run.</td>
                 </tr>
                 <tr>
+                    <td><code>includeReferencedPageContent</code></td>
+                    <td><code>false</code></td>
+                    <td>RENDER mode only. Whether components included from another page (reference components, Experience Fragments, ...) are indexed as part of the including page. By default they render nothing, so only the page's own content is indexed. See <a class="inline" href="#referenced-page-content">Referenced page content</a>.</td>
+                </tr>
+                <tr>
                     <td><code>maxRetryAttempts</code></td>
                     <td><code>5</code></td>
                     <td>After this many consecutive extraction failures for a page, stop retrying automatically and mark it <code>failed=true</code> (excluded from the dirty queue) rather than let it block other pages forever. Applies to both extraction strategies.</td>
@@ -222,6 +235,22 @@
                 <li>The mirror node's <code>extractedVia</code> property records which strategy (<code>PROPERTY_WALK</code> or <code>RENDER</code>) produced each page's content.</li>
                 <li><code>renderBatchSize</code> and <code>renderTimeoutMs</code> only apply to this mode.</li>
             </ul>
+            <h4 id="referenced-page-content">Referenced page content</h4>
+            <p>
+                A page may include components owned by another page, e.g. a reference component, or an Experience Fragment component including
+                <code>&lt;xf&gt;/master/jcr:content/root</code> (Experience Fragments are treated like any other page). During an indexing render, a COMPONENT-scope
+                Sling filter (<code>ReferencedPageFilter</code>) looks at every included component whose resource lives under another page's <code>jcr:content</code>.
+                Components of the rendered page that only <em>read</em> other pages through the API (navigation, breadcrumb, teaser, list, ...) are not affected.
+            </p>
+            <ul>
+                <li><code>includeReferencedPageContent=false</code> (default): those components render nothing, so only the page's own content is indexed, and no page references are recorded.</li>
+                <li><code>includeReferencedPageContent=true</code>: the included content is indexed as part of the including page and tracked like Content Fragments
+                    (see <a class="inline" href="#references">References</a>). When a referenced page is re-extracted and its content changed (or it is an Experience Fragment,
+                    or was deleted), the pages that include it are marked dirty. Propagating only on an actual content change is what lets pages that include each other
+                    settle instead of re-dirtying each other forever. The change is judged on the referenced page's own indexed text, so an edit to a part of it outside
+                    its <code>&lt;main&gt;</code> doesn't re-extract the pages including that part.</li>
+            </ul>
+            <p>Changing this option only affects pages extracted afterwards; run <code>rebuildMirror()</code> (see <a class="inline" href="#management">Management</a>) to apply it to all pages.</p>
             <p>
                 <strong><code>PROPERTY_WALK</code></strong> — walks the page's JCR properties and extracts text via the
                 <a class="inline" href="#cf-extraction-strategies">Content Fragment extraction strategies</a> below
@@ -270,18 +299,24 @@
             <ul>
                 <li><strong>Real-time updates</strong> — JCR observation tracks page and Content Fragment changes automatically; runs only on the cluster leader to prevent concurrent write conflicts on publish</li>
                 <li><strong>Content Fragment support</strong> — dereferences and includes CF content in the extracted body</li>
-                <li><strong>Move handling</strong> — efficiently updates paths when pages are moved</li>
+                <li><strong>Move handling</strong> — efficiently updates paths and references when pages, Content Fragments or folders are moved</li>
                 <li><strong>Incremental processing</strong> — only processes pages changed since the last run</li>
                 <li><strong>HTML stripping</strong> — indexes clean text, not markup</li>
                 <li><strong>Semantic search ready</strong> — compatible with Oak inference configs for vector embeddings</li>
             </ul>
 
-            <h3>Content Fragment backreferences</h3>
-            <p>When a Content Fragment is updated, all pages referencing it are automatically re-indexed:</p>
+            <h3 id="references">References</h3>
+            <p>
+                When a Content Fragment (or, with <code>includeReferencedPageContent</code>, another page) whose content a page includes is updated,
+                the page is automatically re-indexed. Both kinds of reference are tracked the same way:
+            </p>
             <ol>
-                <li>Pages record which CFs they use (<code>fragmentReferences</code> property on the mirror node)</li>
-                <li>CF mirrors record which pages reference them (<code>referencedBy</code> property)</li>
-                <li>A CF update marks all referencing page mirrors dirty, triggering re-extraction on the next scheduled run</li>
+                <li>Pages record everything they include in the <code>references</code> property of their mirror node (earlier versions wrote Content Fragments to <code>fragmentReferences</code>; it is migrated on the page's next extraction)</li>
+                <li>The referenced Content Fragment's or page's mirror records the including pages in <code>referencedBy</code></li>
+                <li>An update of the referenced content marks all including page mirrors dirty, triggering re-extraction on the next scheduled run</li>
+                <li>When a page, Content Fragment or folder is moved, its mirror subtree moves with it and the move is queued under <code>/var/indexing/expanded-pages/moves</code>.
+                    The next run applies queued moves first: it updates the paths of every mirror in the subtree, rewrites them in <code>references</code>/<code>referencedBy</code>
+                    on the other side, and marks the including pages dirty</li>
             </ol>
             <p>
                 This works both through real-time JCR observation and a periodic catch-up scan over all CFs (the safety net for anything the observation listener misses,
@@ -403,6 +438,7 @@ OPTION (INDEX TAG cqSiteSearch)</pre>
 <pre>/var/indexing/expanded-pages/
 ├── state/
 │   └── lastRun              (timestamp of last successful extraction run)
+├── moves/                   (moves awaiting the next run: from, to)
 └── content/                 (mirrors /content)
     └── mysite/
         └── us/
@@ -410,7 +446,8 @@ OPTION (INDEX TAG cqSiteSearch)</pre>
                 └── page/    (cq:PageMirror)
                     ├── path                 = "/content/mysite/us/en/page"
                     ├── dirty                = false
-                    ├── fragmentReferences   = ["/content/dam/fragments/..."]
+                    ├── references           = ["/content/dam/fragments/...", "/content/other/page"]
+                    ├── referencedBy         = ["/content/including/page"]
                     ├── extractedVia         = "RENDER" | "PROPERTY_WALK"
                     ├── retryCount           = 0      (consecutive extraction failures)
                     └── failed               = false  (true once retryCount reaches maxRetryAttempts)</pre>
@@ -492,6 +529,12 @@ OPTION (INDEX TAG cqSiteSearch)</pre>
                 <li>A 3xx response is treated as retry-able, not a hard failure — Experience Fragment container pages are the one case that's expected and pre-filtered (never attempted). Other redirects usually indicate a page that isn't safely renderable standalone.</li>
                 <li>After <code>maxRetryAttempts</code> consecutive failures, the page mirror is marked <code>failed=true</code> and excluded from the dirty queue. Use the <code>FailedPageCount</code> attribute and <code>listFailedPages()</code> JMX operation to find them, and <code>retryFailedPages(pathPrefix)</code> to re-queue them once the cause is fixed.</li>
             </ul>
+
+            <h3>Moved pages not indexed at their new location</h3>
+            <p>
+                Moves are picked up through JCR observation. A move made while the bundle isn't listening (e.g. the instance stops mid-move) may not be caught by the
+                catch-up scan, leaving the mirror at the old path. If that happens after a large move, run <code>rebuildMirror()</code> (see <a class="inline" href="#management">Management</a>).
+            </p>
 
             <h2 id="help">Help</h2>
             <p>If you have any issues or questions, please <a href="https://github.com/oak-indexing/oakTools/issues" target="_blank">open a ticket</a>.</p>
